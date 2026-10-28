@@ -41,6 +41,35 @@ export function useInstallPrompt() {
   return { canInstall: Boolean(deferred), installed, promptInstall };
 }
 
+/*
+ * Nouvelle version de l'application : main.jsx appelle signalerMiseAJour()
+ * quand elle est telechargee et prete. Elle attend alors qu'on touche
+ * « Mettre a jour » : rien ne change par surprise.
+ */
+let appliquerMiseAJour = null;
+const abonnes = new Set();
+
+export function signalerMiseAJour(appliquer) {
+  appliquerMiseAJour = appliquer;
+  abonnes.forEach((prevenir) => prevenir());
+}
+
+export function useMiseAJour() {
+  const [prete, setPrete] = useState(() => appliquerMiseAJour !== null);
+  const [enCours, setEnCours] = useState(false);
+  useEffect(() => {
+    const prevenir = () => setPrete(true);
+    abonnes.add(prevenir);
+    return () => abonnes.delete(prevenir);
+  }, []);
+  const mettreAJour = useCallback(() => {
+    if (!appliquerMiseAJour) return;
+    setEnCours(true);
+    appliquerMiseAJour();
+  }, []);
+  return { prete, enCours, mettreAJour };
+}
+
 export function useOnline() {
   const [online, setOnline] = useState(navigator.onLine);
   useEffect(() => {

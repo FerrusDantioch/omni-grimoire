@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';
 import App from './App.jsx';
+import { signalerMiseAJour } from './lib/usePwa.js';
 import { AppProvider } from './state/AppContext.jsx';
 import { DiceProvider } from './state/DiceContext.jsx';
 import { PlayerProvider } from './state/PlayerContext.jsx';
@@ -25,8 +26,20 @@ if (typeof Promise.withResolvers !== 'function') {
 
 document.documentElement.dataset.theme = 'grimoire';
 
-registerSW({
+// Une nouvelle version telechargee ATTEND : la barre du haut propose
+// « Mettre a jour », et updateSW(true) l'active puis recharge la page.
+const updateSW = registerSW({
   immediate: true,
+  onNeedRefresh() {
+    signalerMiseAJour(() => updateSW(true));
+  },
+  onRegisteredSW(_url, registration) {
+    // A chaque retour dans l'application, on regarde s'il y a du nouveau.
+    if (!registration) return;
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') registration.update().catch(() => {});
+    });
+  },
   onOfflineReady() {
     console.info('[pwa] pret pour une utilisation hors ligne');
   },

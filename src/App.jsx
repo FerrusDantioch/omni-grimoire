@@ -3,7 +3,7 @@ import { useApp } from './state/AppContext.jsx';
 import { useDice } from './state/DiceContext.jsx';
 import { usePlayer } from './state/PlayerContext.jsx';
 import { useAmbiance } from './state/AmbianceContext.jsx';
-import { useInstallPrompt } from './lib/usePwa.js';
+import { useInstallPrompt, useMiseAJour } from './lib/usePwa.js';
 import CharactersView from './views/CharactersView.jsx';
 import JournalView from './views/JournalView.jsx';
 import CombatView from './views/CombatView.jsx';
@@ -30,6 +30,7 @@ export default function App() {
   const { current } = usePlayer();
   const { playingCount: ambiances, stopAll: stopAmbiances } = useAmbiance();
   const { canInstall, installed, promptInstall } = useInstallPrompt();
+  const miseAJour = useMiseAJour();
 
   const [tab, setTab] = useState('characters');
   const [openCharacter, setOpenCharacter] = useState(null);
@@ -110,6 +111,21 @@ export default function App() {
             <Icon name="volume" size={14} />
             {ambiances}
             <Icon name="x" size={13} />
+          </button>
+        )}
+
+        {/* Nouvelle version prete : elle ne s'installe qu'apres ce clic. */}
+        {miseAJour.prete && (
+          <button
+            type="button"
+            className="btn btn--sm btn--primary"
+            onClick={miseAJour.mettreAJour}
+            disabled={miseAJour.enCours}
+            title="Une nouvelle version d’Omni-Grimoire est prête"
+            aria-label="Une nouvelle version d’Omni-Grimoire est prête : mettre à jour"
+          >
+            <Icon name="download" />
+            <span>Mettre à jour</span>
           </button>
         )}
 
