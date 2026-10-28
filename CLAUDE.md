@@ -19,9 +19,15 @@ navigateur).
 ## Version du service worker : automatique, ne rien incrémenter à la main
 
 Le service worker est **généré à chaque build** par `vite-plugin-pwa`, configuré
-en `registerType: 'autoUpdate'` dans `vite.config.js`. Le greffon calcule sa
+en `registerType: 'prompt'` dans `vite.config.js`. Le greffon calcule sa
 propre liste de fichiers et ses révisions : il n'y a aucune constante de version
 à modifier, et aucun fichier de service worker dans le dépôt.
+
+**Nouvelle version : jamais par surprise.** Elle attend un clic sur « Mettre à
+jour » (barre du haut, `useMiseAJour` dans `src/lib/usePwa.js`, branché par
+`onNeedRefresh` dans `src/main.jsx`). Ne pas revenir à `autoUpdate` ni à
+`skipWaiting: true`. Limite du navigateur : une application complètement
+fermée trouve la nouvelle version à l'ouverture suivante.
 
 ## Chemin de base variable
 

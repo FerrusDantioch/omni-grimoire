@@ -12,7 +12,10 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // « prompt » : une nouvelle version ATTEND qu'on touche « Mettre a jour »
+      // (bouton de la barre du haut, voir src/main.jsx et src/lib/usePwa.js).
+      // Rien ne change par surprise, par exemple en pleine partie.
+      registerType: 'prompt',
       // Pas de `includeAssets` : les icones et le favicon sont deja couverts
       // par `globPatterns`, et les lister deux fois les mettrait en cache en double.
       manifest: {
@@ -51,7 +54,9 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         cleanupOutdatedCaches: true,
         clientsClaim: true,
-        skipWaiting: true,
+        // Pas de skipWaiting : la nouvelle version n'est activee qu'au clic
+        // sur « Mettre a jour » (message envoye par registerSW).
+        skipWaiting: false,
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api/]
       },
