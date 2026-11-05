@@ -238,8 +238,8 @@ export default function SettingsView() {
           dans le stockage local du navigateur. Pensez à exporter une sauvegarde de temps en temps.
         </p>
         <p className="small muted" style={{ padding: '0 14px 14px', margin: 0 }}>
-          Cette application a été conçue et développée par Ferrus Dantioch, avec l'aide de Claude (une
-          intelligence artificielle d'Anthropic).
+          Cette application a été conçue et développée par Ferrus Dantioch, avec l'aide de
+          l'intelligence artificielle.
         </p>
         {/* Lien discret vers les autres projets : même couleur que le texte autour (juste
             souligné), ouvert dans un nouvel onglet pour ne pas quitter l'application. */}
