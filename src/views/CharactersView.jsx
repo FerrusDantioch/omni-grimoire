@@ -53,7 +53,7 @@ export default function CharactersView({ openId, setOpenId }) {
   return (
     <>
       <div className="page-head">
-        <h2>Personnages</h2>
+        <h1>Personnages</h1>
         <span className="spacer" />
         <button
           type="button"
@@ -90,8 +90,8 @@ export default function CharactersView({ openId, setOpenId }) {
           <h3>{characters.length ? 'Aucun résultat' : 'Aucun personnage'}</h3>
           <p className="small">
             {characters.length
-              ? 'Essayez un autre terme de recherche.'
-              : 'Créez une fiche : chaque catégorie et chaque champ porte le nom que vous choisissez.'}
+              ? 'Essaie un autre terme de recherche.'
+              : 'Crée une fiche : chaque catégorie et chaque champ porte le nom que tu choisis.'}
           </p>
           {!characters.length && (
             <div className="row row--wrap" style={{ justifyContent: 'center', marginTop: 12 }}>

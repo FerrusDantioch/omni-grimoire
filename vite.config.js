@@ -1,6 +1,9 @@
+import fs from 'node:fs';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+
+const pkg = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 
 // GitHub Pages sert le site depuis /<nom-du-depot>/, alors qu'en local
 // (npm start, npm run dev) il est servi depuis la racine. Le workflow de
@@ -9,6 +12,9 @@ const base = process.env.GITHUB_PAGES ? `/${process.env.GITHUB_PAGES}/` : '/';
 
 export default defineConfig({
   base,
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   plugins: [
     react(),
     VitePWA({
@@ -29,7 +35,6 @@ export default defineConfig({
         start_url: base,
         scope: base,
         display: 'standalone',
-        display_override: ['window-controls-overlay', 'standalone'],
         orientation: 'any',
         background_color: '#141019',
         theme_color: '#141019',
@@ -37,6 +42,7 @@ export default defineConfig({
         icons: [
           { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
           { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'icons/icon-maskable-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
           { src: 'icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
         ],
         shortcuts: [
@@ -45,12 +51,13 @@ export default defineConfig({
         ]
       },
       workbox: {
+        cacheId: 'omni-grimoire',
         // Les icones citees dans le manifeste sont ajoutees automatiquement
         // par le plugin : on ne les reprend pas ici, pour eviter les doublons.
-        globPatterns: ['**/*.{js,mjs,css,html,woff2}', 'favicon.svg', 'icons/apple-touch-icon.png'],
+        globPatterns: ['**/*.{js,mjs,css,html,woff2,webp}', 'favicon.svg', 'icons/apple-touch-icon.png', 'licences-tierces.txt'],
         // Dependances optionnelles de jsPDF (rendu HTML/SVG) que l'application
         // n'appelle jamais : inutile de les embarquer dans le cache hors ligne.
-        globIgnores: ['**/html2canvas*', '**/purify.es*', '**/index.es*'],
+        globIgnores: ['**/html2canvas*', '**/purify.es*', '**/canvg*'],
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         cleanupOutdatedCaches: true,
         clientsClaim: true,
@@ -58,7 +65,7 @@ export default defineConfig({
         // sur « Mettre a jour » (message envoye par registerSW).
         skipWaiting: false,
         navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/^\/api/]
+        navigateFallbackDenylist: [/^\/api/, /licences-tierces\.txt$/]
       },
       devOptions: { enabled: false }
     })

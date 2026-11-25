@@ -15,7 +15,7 @@ export function useDice() {
 export const ROLL_ANIMATION_MS = 620;
 
 export function DiceProvider({ children }) {
-  const { activeCharacter, toast } = useApp();
+  const { activeCharacter, toast, vibration, reloadVersion } = useApp();
 
   const [history, setHistory] = useState([]);
   const [last, setLast] = useState(null);
@@ -25,20 +25,24 @@ export function DiceProvider({ children }) {
   const [manualMod, setManualMod] = useState(0);
   const [selectedFieldIds, setSelectedFieldIds] = useState([]);
   const rollTimer = useRef(null);
+  const pendingResultRef = useRef(null);
+
+  const reloadHistory = useCallback(async () => {
+    try {
+      const rows = await db.getAll(db.STORES.rolls);
+      const sorted = rows.sort((a, b) => b.at - a.at).slice(0, 60);
+      setHistory(sorted);
+      setLast(sorted[0] || null);
+    } catch (err) {
+      console.error('[des] historique illisible', err);
+    }
+  }, []);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const rows = await db.getAll(db.STORES.rolls);
-        const sorted = rows.sort((a, b) => b.at - a.at).slice(0, 60);
-        setHistory(sorted);
-        if (sorted[0]) setLast(sorted[0]);
-      } catch (err) {
-        console.error('[des] historique illisible', err);
-      }
-    })();
-    return () => clearTimeout(rollTimer.current);
-  }, []);
+    reloadHistory();
+  }, [reloadVersion, reloadHistory]);
+
+  useEffect(() => () => clearTimeout(rollTimer.current), []);
 
   /* Les modificateurs selectionnes appartiennent a la fiche ouverte :
      changer de personnage remet la selection a zero. */
@@ -123,19 +127,40 @@ export function DiceProvider({ children }) {
       });
 
       setExpression(expr);
-      setRolling(true);
+      // Sauvegarde immediate en base : aucun jet n'est perdu si un autre lancer suit vite.
+      db.put(db.STORES.rolls, result).then(() => db.trimRolls(200)).catch(() => {});
+
+      const reducedMotion =
+        typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
       clearTimeout(rollTimer.current);
-      rollTimer.current = setTimeout(() => {
+      if (pendingResultRef.current) {
+        const previous = pendingResultRef.current;
+        pendingResultRef.current = null;
+        setHistory((list) => [previous, ...list].slice(0, 60));
+      }
+
+      if (reducedMotion) {
         setRolling(false);
         setLast(result);
         setHistory((list) => [result, ...list].slice(0, 60));
-        db.put(db.STORES.rolls, result).then(() => db.trimRolls(200)).catch(() => {});
-        if (navigator.vibrate) navigator.vibrate(result.crit ? [12, 40, 22] : 12);
+        if (vibration && navigator.vibrate) navigator.vibrate(result.crit ? [12, 40, 22] : 12);
+        return result;
+      }
+
+      setRolling(true);
+      pendingResultRef.current = result;
+      rollTimer.current = setTimeout(() => {
+        pendingResultRef.current = null;
+        setRolling(false);
+        setLast(result);
+        setHistory((list) => [result, ...list].slice(0, 60));
+        if (vibration && navigator.vibrate) navigator.vibrate(result.crit ? [12, 40, 22] : 12);
       }, ROLL_ANIMATION_MS);
 
       return result;
     },
-    [expression, selectedModifiers, manualMod, activeCharacter, toast]
+    [expression, selectedModifiers, manualMod, activeCharacter, toast, vibration]
   );
 
   const reroll = useCallback(() => {
@@ -169,11 +194,12 @@ export function DiceProvider({ children }) {
       roll,
       reroll,
       clearHistory,
+      reloadHistory,
     }),
     [
       history, last, rolling, panelOpen, expression, manualMod, availableModifiers,
       selectedModifiers, selectedFieldIds, toggleModifier, clearModifiers, modifierTotal,
-      roll, reroll, clearHistory,
+      roll, reroll, clearHistory, reloadHistory,
     ]
   );
 

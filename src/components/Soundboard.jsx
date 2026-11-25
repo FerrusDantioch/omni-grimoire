@@ -84,7 +84,7 @@ export default function Soundboard() {
           <span className="empty__icon">🔊</span>
           <h3>Aucune ambiance</h3>
           <p className="small">
-            Importez des effets sonores — pluie, taverne, donjon — et déclenchez-les d'un tap pendant la
+            Importe des effets sonores — pluie, taverne, donjon — et déclenche-les d’un tap pendant la
             partie. Le mode boucle les fait tourner en continu.
           </p>
           <button type="button" className="btn btn--primary" onClick={importSounds} style={{ marginTop: 12 }}>
@@ -113,6 +113,7 @@ export default function Soundboard() {
                     type="button"
                     className={`btn btn--ghost btn--icon btn--sm${sound.loop ? ' chip--on' : ''}`}
                     onClick={() => toggleLoop(sound)}
+                    aria-pressed={Boolean(sound.loop)}
                     aria-label={`Lecture en boucle pour ${sound.name}`}
                     title="Lecture en boucle"
                   >

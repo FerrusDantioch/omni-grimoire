@@ -9,20 +9,58 @@ const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ESCAPES[c]);
 
 const SAFE_URL = /^(https?:\/\/|mailto:)/i;
 
-/** Formatage inline hors code span. Le texte recu est deja echappe. */
-function formatSegment(text) {
+/** Decoupe une chaine selon une regex et transforme matches et texte brut separement. */
+function mapTokens(text, re, onMatch, onPlain) {
+  let out = '';
+  let last = 0;
+  re.lastIndex = 0;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out += onPlain(text.slice(last, m.index));
+    out += onMatch(m);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out += onPlain(text.slice(last));
+  return out;
+}
+
+function formatPlain(text) {
   return text
-    .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt) => alt) // images : texte alternatif seulement
-    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, label, href) =>
-      SAFE_URL.test(href)
-        ? `<a href="${href.replace(/"/g, '%22')}" target="_blank" rel="noopener noreferrer">${label}</a>`
-        : label
-    )
     .replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
     .replace(/__([^_]+)__/g, '<strong>$1</strong>')
     .replace(/~~([^~]+)~~/g, '<del>$1</del>');
+}
+
+const LINK_OR_URL_RE = /!\[([^\]]*)\]\(([^)\s]+)\)|\[([^\]]+)\]\(([^)\s]+)\)|(https?:\/\/[^\s<]+)/g;
+const TRAILING_URL_PUNCT = /(?:&quot;|&gt;|&lt;|&#39;|[.,;:!?)])$/;
+
+/** Formatage inline hors code span. Le texte recu est deja echappe. */
+function formatSegment(text) {
+  return mapTokens(
+    text,
+    LINK_OR_URL_RE,
+    (m) => {
+      if (m[1] !== undefined) return formatPlain(m[1]); // images : texte alternatif seulement
+      if (m[3] !== undefined) {
+        const [, , , label, href] = m;
+        return SAFE_URL.test(href)
+          ? `<a href="${href.replace(/"/g, '%22')}" target="_blank" rel="noopener noreferrer">${formatPlain(label)}</a>`
+          : formatPlain(label);
+      }
+      let url = m[5];
+      let suffix = '';
+      let match;
+      while ((match = TRAILING_URL_PUNCT.exec(url)) !== null) {
+        suffix = match[0] + suffix;
+        url = url.slice(0, -match[0].length);
+      }
+      if (!url) return formatPlain(m[5]);
+      return `<a href="${url.replace(/"/g, '%22')}" target="_blank" rel="noopener noreferrer">${url}</a>${formatPlain(suffix)}`;
+    },
+    formatPlain
+  );
 }
 
 /**
@@ -99,7 +137,12 @@ export function parseBlocks(md) {
     }
 
     const para = [];
-    while (i < lines.length && lines[i].trim() && !/^(#{1,4}\s|>|[-*+]\s|\d+[.)]\s|```)/.test(lines[i])) {
+    while (
+      i < lines.length &&
+      lines[i].trim() &&
+      !/^(#{1,4}\s|>|[-*+]\s|\d+[.)]\s|```)/.test(lines[i]) &&
+      !/^(-{3,}|\*{3,}|_{3,})$/.test(lines[i].trim())
+    ) {
       para.push(lines[i++]);
     }
     blocks.push({ type: 'paragraph', text: para.join('\n') });
@@ -135,17 +178,28 @@ export function renderMarkdown(md) {
     .join('\n');
 }
 
-/** Retire les marques markdown d'une ligne (pour texte brut et PDF). */
-export function stripInline(text) {
-  return String(text ?? '')
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/\[([^\]]+)\]\(([^)]*)\)/g, '$1 ($2)')
+function stripInlinePlain(text) {
+  return text
     .replace(/\*\*\*([^*]+)\*\*\*/g, '$1')
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/\*([^*\n]+)\*/g, '$1')
     .replace(/__([^_]+)__/g, '$1')
     .replace(/~~([^~]+)~~/g, '$1')
     .replace(/`([^`]+)`/g, '$1');
+}
+
+/** Retire les marques markdown d'une ligne (pour texte brut et PDF). */
+export function stripInline(text) {
+  return mapTokens(
+    String(text ?? ''),
+    /!\[([^\]]*)\]\(([^)]*)\)|\[([^\]]+)\]\(([^)]*)\)|(https?:\/\/[^\s]+)/g,
+    (m) => {
+      if (m[1] !== undefined) return stripInlinePlain(m[1]);
+      if (m[3] !== undefined) return `${stripInlinePlain(m[3])} (${m[4]})`;
+      return m[5];
+    },
+    stripInlinePlain
+  );
 }
 
 /** Markdown -> texte brut lisible (export .txt). */

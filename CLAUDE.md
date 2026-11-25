@@ -1,20 +1,50 @@
 # Omni-Grimoire — notes pour Claude
 
-PWA compagnon de jeu de rôle en **React + Vite** : fiches à structure libre,
-lanceur de dés, journal, visionneuse PDF, lecteur audio. Contrairement aux PWA
-en JS pur de l'utilisateur, ce projet passe par une **étape de compilation**.
+PWA compagnon de jeu de rôle en **React + Vite** (v1.1.0) : fiches à structure
+libre, lanceur de dés, journal, tracker de combat, visionneuse PDF, lecteur
+audio et soundboard. Contrairement aux PWA en JS pur de l'utilisateur, ce projet
+passe par une **étape de compilation**.
 
 ```bash
 npm install
-npm run dev      # développement
-npm run build    # produit dist/
-npm start        # build puis aperçu sur http://localhost:4173
-npm test         # scripts/test-core.mjs
+npm run dev          # développement
+npm run build        # produit dist/ (lance prebuild -> scripts/licences-tierces.mjs)
+npm start            # build puis aperçu sur http://localhost:4173
+npm test             # scripts/test-core.mjs
+node tests/smoke.mjs # test Playwright sur dist/ servi sous /omni-grimoire/
 ```
 
 Le fichier `Lancer Omni-Grimoire.cmd` fait tout cela d'un double-clic sous Windows
 (installe les dépendances au premier lancement, compile, puis ouvre le
 navigateur).
+
+## Nouveautés et points clés v1.1.0
+
+- **Anti-flash de thème sans inline** : `public/theme-init.js` est chargé de
+  façon synchrone dans `<head>` avant le bundle React ; il lit
+  `omni-grimoire:theme` dans `localStorage`, pose `data-theme` sur `<html>` et
+  met à jour les balises `<meta name="theme-color">`. Compatible avec la CSP
+  stricte sans `'unsafe-inline'`.
+- **CSP stricte** dans `index.html` (`<meta http-equiv="Content-Security-Policy">`) :
+  aucun script inline, aucune requête externe autorisée.
+- **Isolation du cache Workbox** : `workbox.cacheId: 'omni-grimoire'` dans
+  `vite.config.js` pour ne pas entrer en collision avec les autres PWA sur
+  l'origine partagée `ferrusdantioch.github.io`.
+- **Licences tierces précachées et liées** : `scripts/licences-tierces.mjs`
+  inclut les paquets `workbox-*` réellement embarqués dans le build (`sw.js` et
+  `workbox-window`) et exclut les dépendances optionnelles/Node-only/TS-only
+  jamais publiées dans `dist/`. `public/licences-tierces.txt` est précaché par
+  Workbox et lié dans le bloc « À propos » des Réglages.
+- **`PlayerTimeContext`** dans `src/state/PlayerContext.jsx` : isole les mises à
+  jour fréquentes de position/durée de lecture pour éviter de re-rendre toute
+  l'application à chaque tick audio.
+- **Réglage « Vibrations »** dans Réglages : permet de couper toutes les
+  vibrations (`navigator.vibrate`).
+- **Tests et CI** : `npm test` (`scripts/test-core.mjs`) + `npm run build` +
+  `node tests/smoke.mjs` (Playwright sur `dist/` servi sous `/omni-grimoire/`,
+  hors ligne, CSP, accessibilité, contraste Parchemin >= 4,5:1). Automatisé
+  dans `.github/workflows/ci.yml` (qui vérifie aussi `git diff --exit-code`
+  après `prebuild`).
 
 ## Version du service worker : automatique, ne rien incrémenter à la main
 
@@ -155,9 +185,9 @@ Seuls omni-texte, Refuge, omni-budget et omni-grimoire ont été examinés. Cap,
 
 ### 11. Dettes connues, par priorité
 
-- **Priorité 2** — Origine partagée : décision d'hébergement à étudier, reportée.
+- **Priorité 2** — Origine partagée : décision d'hébergement à étudier, reportée (dans `omni-grimoire` v1.1.0, `workbox.cacheId: 'omni-grimoire'` isole déjà le cache).
 - **Priorité 4** — Méthode de version unique pour toutes les applications.
-- **Priorité 5** — Grimoire : réglage pour couper la vibration, cibles tactiles, CSP, jsPDF 2.5.2 à auditer (à vérifier, non confirmé), Workbox à citer dans `licences-tierces.txt`.
-- **Priorité 6** — Éclair de thème (omni-budget, omni-grimoire), préfixe de cache générique d'omni-budget, documentation périmée.
-- **À classer** — Tutoiement à appliquer dans omni-budget et omni-grimoire (aujourd'hui : vouvoiement).
-- **À classer** — omni-budget et omni-grimoire : lien vers `licences-tierces.txt` depuis l'« À propos ».
+- **Priorité 5** — Grimoire (résolu en v1.1.0) : réglage « Vibrations », cibles tactiles 44 px, CSP stricte, `jspdf` 4.2.1, paquets `workbox-*` embarqués cités dans `licences-tierces.txt`.
+- **Priorité 6** — Éclair de thème (`omni-budget` ; résolu dans `omni-grimoire` v1.1.0 via `public/theme-init.js`), préfixe de cache générique d'`omni-budget`, documentation mise à jour pour `omni-grimoire`.
+- **À classer** — Tutoiement à appliquer dans `omni-budget` (appliqué dans `omni-grimoire` v1.1.0).
+- **À classer** — `omni-budget` : lien vers `licences-tierces.txt` depuis l'« À propos » (ajouté et précaché dans `omni-grimoire` v1.1.0).

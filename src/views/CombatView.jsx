@@ -7,7 +7,7 @@ import { ConfirmDialog } from '../components/Modal.jsx';
 import './combat.css';
 
 /**
- * Combatant type : initiative (le score de l'ordre de jeu), bonus d'initiative
+ * Combattant type : initiative (le score de l'ordre de jeu), bonus d'initiative
  * (ajoute au 1d20 quand l'initiative est tiree), PV optionnels, note libre.
  */
 const newCombatant = (overrides = {}) => ({
@@ -58,6 +58,8 @@ function combatantFromCharacter(character) {
   for (const section of character.sections || []) {
     for (const field of section.fields || []) {
       if (field.type !== 'number') continue;
+      if (field.value === '' || field.value === null || field.value === undefined) continue;
+      if (typeof field.value === 'string' && field.value.trim() === '') continue;
       const label = String(field.label || '').toLowerCase();
       const value = Number(field.value);
       if (!Number.isFinite(value)) continue;
@@ -65,8 +67,9 @@ function combatantFromCharacter(character) {
         initBonus = field.useAsModifier ? statToModifier(field.value, field.modMode) : Math.trunc(value);
       } else if (/(dext|agil)/.test(label) && field.useAsModifier && dexBonus === null) {
         dexBonus = statToModifier(field.value, field.modMode);
-      } else if (/max/.test(label) && /(vie|pv|hp)/.test(label)) hpMax = value;
-      else if (/(point.*vie|^pv$|^pv\b|^hp$|^hp\b|vie)/.test(label) && hp === null) hp = value;
+      } else if (/\bmax(imum)?\b/i.test(label) && /\b(points?\s+de\s+vie|pv|hp|vie)\b/i.test(label)) {
+        hpMax = value;
+      } else if (/\b(points?\s+de\s+vie|pv|hp|vie)\b/i.test(label) && hp === null) hp = value;
     }
   }
   if (hp !== null && hpMax === null) hpMax = hp;
@@ -84,6 +87,48 @@ function combatantFromCharacter(character) {
   return { combatant, roll };
 }
 
+function InitiativeInput({ value, bonus, name, onCommit }) {
+  const [text, setText] = useState(String(value));
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    setText(String(value));
+  }, [value]);
+
+  const commit = () => {
+    const trimmed = text.trim();
+    const parsed = trimmed === '' ? 0 : Number(trimmed);
+    const next = Number.isFinite(parsed) ? Math.trunc(parsed) : value;
+    setText(String(next));
+    if (next !== value) onCommit(next);
+  };
+
+  return (
+    <label className="combatant__init" title={`Initiative (bonus ${signed(bonus || 0)})`}>
+      <Icon name="dice" size={13} />
+      <input
+        ref={inputRef}
+        type="text"
+        inputMode="numeric"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            commit();
+            inputRef.current?.blur();
+          } else if (e.key === 'Escape') {
+            setText(String(value));
+            inputRef.current?.blur();
+          }
+        }}
+        aria-label={`Initiative de ${name || 'combattant'}`}
+      />
+      {bonus ? <span className="combatant__bonus">{signed(bonus)}</span> : null}
+    </label>
+  );
+}
+
 /* =========================================================
    Tracker d'un combat
    ========================================================= */
@@ -95,6 +140,7 @@ function Tracker({ encounter, onBack }) {
   const [form, setForm] = useState({ name: '', bonus: '', hp: '' });
   const [confirmFinish, setConfirmFinish] = useState(false);
   const [confirmReroll, setConfirmReroll] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
   const draftRef = useRef(draft);
   draftRef.current = draft;
 
@@ -134,7 +180,7 @@ function Tracker({ encounter, onBack }) {
 
   const activeIndex = sorted.findIndex((c) => c.id === draft.turnId);
 
-  // Le tour pointe un combatant supprime : on repart a zero.
+  // Le tour pointe un combattant supprime : on repart a zero.
   useEffect(() => {
     if (draft.turnId && activeIndex === -1) update({ turnId: null });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -318,7 +364,7 @@ function Tracker({ encounter, onBack }) {
         <button
           type="button"
           className="btn btn--ghost btn--sm"
-          onClick={resetFight}
+          onClick={() => setConfirmReset(true)}
           disabled={!sorted.length}
           title="Réinitialiser les tours et les PV"
         >
@@ -331,8 +377,8 @@ function Tracker({ encounter, onBack }) {
       {sorted.length === 0 ? (
         <div className="empty">
           <span className="empty__icon">⚔️</span>
-          <h3>Aucun combatant</h3>
-          <p className="small">Ajoutez des monstres à la main ou importez vos personnages ci-dessous.</p>
+          <h3>Aucun combattant</h3>
+          <p className="small">Ajoute des monstres à la main ou importe tes personnages ci-dessous.</p>
         </div>
       ) : (
         <ol className="combat__list">
@@ -356,26 +402,19 @@ function Tracker({ encounter, onBack }) {
                       value={c.name}
                       onChange={(e) => patchCombatant(c.id, { name: e.target.value })}
                       placeholder="Nom"
-                      aria-label="Nom du combatant"
+                      aria-label="Nom du combattant"
                     />
-                    <label
-                      className="combatant__init"
-                      title={`Initiative (bonus ${signed(c.initBonus || 0)})`}
-                    >
-                      <Icon name="dice" size={13} />
-                      <input
-                        type="number"
-                        value={c.initiative}
-                        onChange={(e) => patchCombatant(c.id, { initiative: Number(e.target.value) || 0 })}
-                        aria-label={`Initiative de ${c.name || 'combatant'}`}
-                      />
-                      {c.initBonus ? <span className="combatant__bonus">{signed(c.initBonus)}</span> : null}
-                    </label>
+                    <InitiativeInput
+                      value={c.initiative}
+                      bonus={c.initBonus}
+                      name={c.name}
+                      onCommit={(next) => patchCombatant(c.id, { initiative: next })}
+                    />
                     <button
                       type="button"
                       className="btn btn--ghost btn--icon btn--sm"
                       onClick={() => removeCombatant(c.id)}
-                      aria-label={`Retirer ${c.name || 'ce combatant'}`}
+                      aria-label={`Retirer ${c.name || 'ce combattant'}`}
                     >
                       <Icon name="trash" size={15} />
                     </button>
@@ -419,7 +458,7 @@ function Tracker({ encounter, onBack }) {
                     value={c.note}
                     onChange={(e) => patchCombatant(c.id, { note: e.target.value })}
                     placeholder="États, conditions… (empoisonné, à terre)"
-                    aria-label={`Notes pour ${c.name || 'combatant'}`}
+                    aria-label={`Notes pour ${c.name || 'combattant'}`}
                   />
                 </div>
               </li>
@@ -430,7 +469,7 @@ function Tracker({ encounter, onBack }) {
 
       {/* -------- ajout -------- */}
       <div className="card card--pad combat__add">
-        <span className="label">Ajouter un combatant</span>
+        <span className="label">Ajouter un combattant</span>
         <div className="combat__addrow">
           <input
             className="input"
@@ -438,7 +477,7 @@ function Tracker({ encounter, onBack }) {
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             onKeyDown={(e) => e.key === 'Enter' && addFromForm()}
             placeholder="Gobelin, dragon…"
-            aria-label="Nom du combatant"
+            aria-label="Nom du combattant"
           />
           <input
             className="input combat__addnum"
@@ -466,7 +505,7 @@ function Tracker({ encounter, onBack }) {
           </button>
         </div>
         <p className="small muted combat__hint">
-          L’initiative est tirée automatiquement (1d20 + bonus) ; vous pouvez la corriger dans la liste.
+          L’initiative est tirée automatiquement (1d20 + bonus) ; tu peux la corriger dans la liste.
         </p>
 
         {notInFight.length > 0 && (
@@ -483,6 +522,16 @@ function Tracker({ encounter, onBack }) {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmReset}
+        title="Réinitialiser ce combat ?"
+        message="Les tours reviennent au round 1 et les points de vie sont remis au maximum."
+        confirmLabel="Réinitialiser"
+        danger={false}
+        onConfirm={resetFight}
+        onClose={() => setConfirmReset(false)}
+      />
 
       <ConfirmDialog
         open={confirmReroll}
@@ -528,13 +577,13 @@ export default function CombatView({ openId, setOpenId }) {
   };
 
   if (open) {
-    return <Tracker encounter={open} onBack={() => setOpenId(null)} />;
+    return <Tracker key={open.id} encounter={open} onBack={() => setOpenId(null)} />;
   }
 
   return (
     <>
       <div className="page-head">
-        <h2>Combat</h2>
+        <h1>Combat</h1>
         <span className="spacer" />
         <button type="button" className="btn btn--primary btn--sm" onClick={create}>
           <Icon name="plus" />
@@ -547,7 +596,7 @@ export default function CombatView({ openId, setOpenId }) {
           <span className="empty__icon">⚔️</span>
           <h3>Aucun combat en préparation</h3>
           <p className="small">
-            Préparez vos rencontres à l'avance ou lancez-les à table : initiative, tours, rounds et points de
+            Prépare tes rencontres à l’avance ou lance-les à table : initiative, tours, rounds et points de
             vie sont suivis ici.
           </p>
           <button type="button" className="btn btn--primary" onClick={create} style={{ marginTop: 12 }}>
@@ -564,7 +613,7 @@ export default function CombatView({ openId, setOpenId }) {
                 <button type="button" className="combat-card__open" onClick={() => setOpenId(enc.id)}>
                   <strong>{enc.name || 'Sans nom'}</strong>
                   <span className="small muted">
-                    {enc.combatants.length} combatant(s)
+                    {enc.combatants.length} combattant(s)
                     {running ? ` · round ${enc.round}` : ''} · modifié {formatRelative(enc.updatedAt)}
                   </span>
                 </button>

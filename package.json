@@ -1,7 +1,7 @@
 {
   "name": "omni-grimoire",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "license": "CC-BY-NC-ND-4.0",
   "type": "module",
   "description": "PWA tout-en-un pour le jeu de role solo et multi-joueurs",
@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "idb": "^8.0.0",
-    "jspdf": "^2.5.2",
+    "jspdf": "^4.2.1",
     "pdfjs-dist": "^4.6.82",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

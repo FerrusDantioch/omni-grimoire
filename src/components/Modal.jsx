@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from './Icon.jsx';
 
@@ -10,6 +10,8 @@ const FOCUSABLE =
  * Ferme sur Echap et sur clic hors du panneau, piege le focus a l'interieur.
  */
 export default function Modal({ open, onClose, title, children, footer, labelledBy }) {
+  const autoTitleId = useId();
+  const titleId = labelledBy || autoTitleId;
   const panelRef = useRef(null);
   const restoreRef = useRef(null);
 
@@ -27,6 +29,11 @@ export default function Modal({ open, onClose, title, children, footer, labelled
       if (!items.length) return;
       const first = items[0];
       const last = items[items.length - 1];
+      if (!panelRef.current.contains(document.activeElement)) {
+        event.preventDefault();
+        first.focus();
+        return;
+      }
       if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last.focus();
@@ -43,16 +50,23 @@ export default function Modal({ open, onClose, title, children, footer, labelled
     restoreRef.current = document.activeElement;
     const overflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', handleKeyDown);
     const timer = setTimeout(() => {
-      const target = panelRef.current?.querySelector(FOCUSABLE);
+      if (!panelRef.current) return;
+      // Preserver le focus si un champ enfant (ex. autoFocus) l'a deja recu.
+      if (panelRef.current.contains(document.activeElement)) return;
+      const target = panelRef.current.querySelector(FOCUSABLE);
       target?.focus();
     }, 40);
     return () => {
       clearTimeout(timer);
+      document.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = overflow;
-      restoreRef.current?.focus?.();
+      if (restoreRef.current?.isConnected) {
+        restoreRef.current.focus();
+      }
     };
-  }, [open]);
+  }, [open, handleKeyDown]);
 
   if (!open) return null;
 
@@ -60,17 +74,16 @@ export default function Modal({ open, onClose, title, children, footer, labelled
     <div
       className="overlay"
       onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}
-      onKeyDown={handleKeyDown}
     >
       <div
         className="modal"
         role="dialog"
         aria-modal="true"
-        aria-labelledby={labelledBy || 'modal-title'}
+        aria-labelledby={titleId}
         ref={panelRef}
       >
         <div className="modal__head">
-          <h3 id={labelledBy || 'modal-title'}>{title}</h3>
+          <h3 id={titleId}>{title}</h3>
           <button type="button" className="btn btn--ghost btn--icon btn--sm" onClick={onClose} aria-label="Fermer">
             <Icon name="x" />
           </button>

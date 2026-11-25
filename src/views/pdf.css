@@ -117,6 +117,7 @@
 
 .pdf__page-input {
   width: 52px;
+  min-height: var(--tap);
   text-align: center;
   font: inherit;
   font-weight: 700;

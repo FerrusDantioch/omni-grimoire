@@ -1,15 +1,19 @@
-import { usePlayer } from '../state/PlayerContext.jsx';
+import { usePlayer, usePlayerTime } from '../state/PlayerContext.jsx';
 import Icon from './Icon.jsx';
+
+function MiniPlayerBar() {
+  const { position, duration } = usePlayerTime();
+  const progress = duration ? Math.min(100, (position / duration) * 100) : 0;
+  return <span className="mini-player__bar" style={{ width: `${progress}%` }} aria-hidden="true" />;
+}
 
 /**
  * Barre de lecture visible sur tous les onglets tant qu'une piste est chargee.
  * Un appui sur le titre ramene vers l'onglet Musique.
  */
 export default function MiniPlayer({ onOpen }) {
-  const { current, playing, togglePlay, next, position, duration } = usePlayer();
+  const { current, playing, togglePlay, next } = usePlayer();
   if (!current) return null;
-
-  const progress = duration ? Math.min(100, (position / duration) * 100) : 0;
 
   return (
     <div className="mini-player">
@@ -33,7 +37,7 @@ export default function MiniPlayer({ onOpen }) {
       <button type="button" className="btn btn--ghost btn--icon" onClick={next} aria-label="Piste suivante">
         <Icon name="skipForward" />
       </button>
-      <span className="mini-player__bar" style={{ width: `${progress}%` }} aria-hidden="true" />
+      <MiniPlayerBar />
     </div>
   );
 }

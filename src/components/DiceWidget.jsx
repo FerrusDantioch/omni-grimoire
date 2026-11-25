@@ -12,14 +12,24 @@ const QUICK = [
   { label: 'Caractéristique', expr: '4d6kh3', hint: 'Quatre d6, on jette le plus faible' },
 ];
 
+const FOCUSABLE =
+  'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
+
 /** Chiffres qui defilent pendant l'animation du lancer. */
 function Tumbler({ sides = 20 }) {
+  const reducedMotion =
+    typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   const [face, setFace] = useState(1);
   useEffect(() => {
+    if (reducedMotion) return undefined;
     const id = setInterval(() => setFace(1 + Math.floor(Math.random() * sides)), 55);
     return () => clearInterval(id);
-  }, [sides]);
-  return <span className="dice-result__value dice-result__value--rolling">{face}</span>;
+  }, [sides, reducedMotion]);
+  return (
+    <span className="dice-result__value dice-result__value--rolling">
+      {reducedMotion ? '…' : face}
+    </span>
+  );
 }
 
 export default function DiceWidget() {
@@ -35,20 +45,56 @@ export default function DiceWidget() {
   const [showHistory, setShowHistory] = useState(false);
   const panelRef = useRef(null);
   const fabRef = useRef(null);
+  const restoreFocusRef = useRef(null);
 
   const error = expression.trim() ? validateExpression(expression) : null;
 
-  /* Fermeture au clic exterieur et a la touche Echap. */
+  /* Fermeture au clic exterieur, touche Echap et piege focus dans le panneau. */
   useEffect(() => {
     if (!panelOpen) return undefined;
+    if (!panelRef.current?.contains(document.activeElement)) {
+      restoreFocusRef.current = document.activeElement;
+    }
+    const focusTimer = setTimeout(() => {
+      if (!panelRef.current || panelRef.current.contains(document.activeElement)) return;
+      const first = panelRef.current.querySelector(FOCUSABLE);
+      first?.focus();
+    }, 20);
+
     const onPointer = (e) => {
       if (panelRef.current?.contains(e.target) || fabRef.current?.contains(e.target)) return;
       setPanelOpen(false);
     };
-    const onKey = (e) => e.key === 'Escape' && setPanelOpen(false);
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        setPanelOpen(false);
+        const target = restoreFocusRef.current?.isConnected ? restoreFocusRef.current : fabRef.current;
+        target?.focus();
+        return;
+      }
+      if (e.key !== 'Tab' || !panelRef.current) return;
+      const items = Array.from(panelRef.current.querySelectorAll(FOCUSABLE)).filter(
+        (el) => el.offsetParent !== null
+      );
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (!panelRef.current.contains(document.activeElement)) {
+        e.preventDefault();
+        first.focus();
+      } else if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
     document.addEventListener('pointerdown', onPointer);
     document.addEventListener('keydown', onKey);
     return () => {
+      clearTimeout(focusTimer);
       document.removeEventListener('pointerdown', onPointer);
       document.removeEventListener('keydown', onKey);
     };
@@ -61,8 +107,8 @@ export default function DiceWidget() {
   }, [expression]);
 
   const previewMods = [
-    ...selectedModifiers.map((m) => ({ label: m.label, value: m.value })),
-    ...(Number(manualMod) ? [{ label: 'Bonus manuel', value: Number(manualMod) }] : []),
+    ...selectedModifiers.map((m) => ({ id: m.id, label: m.label, value: m.value })),
+    ...(Number(manualMod) ? [{ id: 'manual', label: 'Bonus manuel', value: Number(manualMod) }] : []),
   ];
 
   const rollDie = (sides) => {
@@ -120,7 +166,7 @@ export default function DiceWidget() {
                   )}
                 </>
               ) : (
-                <span className="muted">Choisissez un dé pour commencer.</span>
+                <span className="muted">Choisis un dé pour commencer.</span>
               )}
             </div>
           </div>
@@ -175,7 +221,7 @@ export default function DiceWidget() {
                 availableModifiers.length ? (
                   <>
                     <p className="small muted dice-hint">
-                      Fiche ouverte : <strong>{activeCharacter.name}</strong> — touchez une caractéristique
+                      Fiche ouverte : <strong>{activeCharacter.name}</strong> — touche une caractéristique
                       pour l’ajouter au jet.
                     </p>
                     <div className="dice-mods">
@@ -197,12 +243,12 @@ export default function DiceWidget() {
                 ) : (
                   <p className="small muted dice-hint">
                     <strong>{activeCharacter.name}</strong> n’a aucun champ numérique marqué « utilisable comme
-                    modificateur ». Activez l’option sur un champ de la fiche.
+                    modificateur ». Active l’option sur un champ de la fiche.
                   </p>
                 )
               ) : (
                 <p className="small muted dice-hint">
-                  Ouvrez une fiche de personnage pour ajouter ses caractéristiques au jet.
+                  Ouvre une fiche de personnage pour ajouter ses caractéristiques au jet.
                 </p>
               )}
 
@@ -266,8 +312,8 @@ export default function DiceWidget() {
               ) : (
                 <p className="small muted dice-preview">
                   {expression}
-                  {previewMods.map((m) => (
-                    <span key={m.label}>
+                  {previewMods.map((m, i) => (
+                    <span key={`${m.id || i}-${m.label}`}>
                       {m.value < 0 ? ' − ' : ' + '}
                       {Math.abs(m.value)} <em>({m.label})</em>
                     </span>

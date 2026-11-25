@@ -1,0 +1,56 @@
+name: Verification CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - 'fix/**'
+      - 'feat/**'
+      - 'claude/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verifications:
+    name: Tests, build et smoke Playwright
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Installation
+        run: npm ci
+
+      - name: Tests unitaires
+        run: npm test
+
+      - name: Build de production
+        run: npm run build
+        env:
+          GITHUB_PAGES: ${{ github.event.repository.name || 'omni-grimoire' }}
+
+      - name: Verification licences et arbre git propre
+        run: |
+          git diff --exit-code
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Des fichiers ont ete modifies ou ajoutes pendant le build :"
+            git status --short
+            exit 1
+          fi
+
+      - name: Installation temporaire de Playwright
+        run: npm install --no-save playwright && npx playwright install --with-deps chromium
+
+      - name: Tests Playwright sur dist/
+        run: node tests/smoke.mjs
+        env:
+          GITHUB_PAGES: ${{ github.event.repository.name || 'omni-grimoire' }}

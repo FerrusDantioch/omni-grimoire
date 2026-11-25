@@ -16,10 +16,41 @@ const RULE = [206, 196, 216];
 const GOLD = [154, 107, 31];
 const PANEL = [247, 244, 249];
 
+const WINANSI_EXTRAS = new Set([
+  0x20ac, 0x201a, 0x0192, 0x201e, 0x2020, 0x2021, 0x02c6, 0x2030, 0x0160, 0x2039, 0x0152, 0x017d,
+  0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014, 0x02dc, 0x2122, 0x0161, 0x203a, 0x0153,
+  0x017e, 0x0178,
+]);
+
+/** Normalise les caracteres hors WinAnsi avant appel aux polices standard jsPDF. */
+function pdfSafe(text) {
+  const normalized = String(text ?? '')
+    .replace(/[\u00a0\u202f\u2009]/g, ' ')
+    .replace(/\u2212/g, '-')
+    .replace(/\u2192/g, '->')
+    .replace(/\u2190/g, '<-')
+    .replace(/\u2194/g, '<->')
+    .replace(/\u21d2/g, '=>')
+    .replace(/\u2026/g, '...')
+    .replace(/\u2265/g, '>=')
+    .replace(/\u2264/g, '<=')
+    .replace(/\u2260/g, '!=')
+    .replace(/\u2248/g, '~=')
+    .replace(/[\u2713\u2714]/g, '[x]')
+    .replace(/[\u2717\u2718]/g, '[ ]');
+
+  let out = '';
+  for (const ch of normalized) {
+    const code = ch.codePointAt(0);
+    if (code <= 0xff || WINANSI_EXTRAS.has(code)) out += ch;
+  }
+  return out;
+}
+
 async function createDoc(title) {
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({ unit: 'pt', format: 'a4', compress: true });
-  doc.setProperties({ title, creator: 'Omni-Grimoire — Compagnon JDR' });
+  doc.setProperties({ title: pdfSafe(title), creator: 'Omni-Grimoire — Compagnon JDR' });
   return doc;
 }
 
@@ -52,12 +83,13 @@ function layout(doc) {
 
 function drawFooter(doc, subtitle) {
   const pages = doc.getNumberOfPages();
+  const safeSub = pdfSafe(subtitle);
   for (let i = 1; i <= pages; i++) {
     doc.setPage(i);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(...INK_SOFT);
-    doc.text(subtitle, M.left, PAGE.height - 28);
+    doc.text(safeSub, M.left, PAGE.height - 28);
     doc.text(`${i} / ${pages}`, PAGE.width - M.right, PAGE.height - 28, { align: 'right' });
     doc.setDrawColor(...RULE);
     doc.setLineWidth(0.5);
@@ -69,7 +101,7 @@ function drawTitle(doc, cur, title, subtitle) {
   doc.setFont('times', 'bold');
   doc.setFontSize(26);
   doc.setTextColor(...INK);
-  const lines = doc.splitTextToSize(title || 'Sans titre', CONTENT_W);
+  const lines = doc.splitTextToSize(pdfSafe(title) || 'Sans titre', CONTENT_W);
   cur.ensure(lines.length * 30 + 30);
   doc.text(lines, M.left, cur.y + 18);
   cur.gap(lines.length * 30);
@@ -78,7 +110,7 @@ function drawTitle(doc, cur, title, subtitle) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10.5);
     doc.setTextColor(...INK_SOFT);
-    doc.text(subtitle, M.left, cur.y + 8);
+    doc.text(pdfSafe(subtitle), M.left, cur.y + 8);
     cur.gap(16);
   }
 
@@ -93,7 +125,7 @@ function drawSectionHeading(doc, cur, text) {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(...GOLD);
-  doc.text(String(text || '').toUpperCase(), M.left, cur.y + 10);
+  doc.text(pdfSafe(text).toUpperCase(), M.left, cur.y + 10);
   doc.setDrawColor(...RULE);
   doc.setLineWidth(0.7);
   doc.line(M.left, cur.y + 18, PAGE.width - M.right, cur.y + 18);
@@ -113,7 +145,8 @@ function fieldValueText(field) {
 
 /** Dessine un encadre libelle/valeur et renvoie sa hauteur. */
 function measureBox(doc, field, width) {
-  const value = fieldValueText(field);
+  const value = pdfSafe(fieldValueText(field));
+  doc.setFont('helvetica', field.type === 'longtext' ? 'normal' : 'bold');
   doc.setFontSize(field.type === 'longtext' ? 10 : 12);
   const lines = doc.splitTextToSize(value, width - 20);
   return { lines, height: Math.max(44, 26 + lines.length * (field.type === 'longtext' ? 13 : 15)) };
@@ -128,12 +161,48 @@ function drawBox(doc, x, y, width, field, measured) {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.6);
   doc.setTextColor(...INK_SOFT);
-  doc.text(String(field.label || 'Sans nom').toUpperCase().slice(0, 46), x + 10, y + 15);
+  doc.text(pdfSafe(field.label || 'Sans nom').toUpperCase().slice(0, 46), x + 10, y + 15);
 
   doc.setFont('helvetica', field.type === 'longtext' ? 'normal' : 'bold');
   doc.setFontSize(field.type === 'longtext' ? 10 : 12);
   doc.setTextColor(...INK);
   doc.text(measured.lines, x + 10, y + 30);
+}
+
+/** Dessine un champ longtext en le decoupant sur plusieurs pages si besoin. */
+function drawLongTextBox(doc, cur, field) {
+  const measured = measureBox(doc, field, CONTENT_W);
+  const availableNow = PAGE.height - M.bottom - cur.y - 10;
+  if (measured.height <= availableNow || measured.lines.length <= 1) {
+    cur.ensure(measured.height + 10);
+    drawBox(doc, M.left, cur.y, CONTENT_W, field, measured);
+    cur.gap(measured.height + 10);
+    return;
+  }
+
+  let offset = 0;
+  let chunkIndex = 0;
+  const baseLabel = field.label || 'Sans nom';
+  while (offset < measured.lines.length) {
+    const avail = PAGE.height - M.bottom - cur.y - 10;
+    if (avail < 52) {
+      doc.addPage();
+      cur.y = M.top;
+    }
+    const pageAvail = PAGE.height - M.bottom - cur.y - 10;
+    const maxLines = Math.max(1, Math.floor((pageAvail - 26) / 13));
+    const chunk = measured.lines.slice(offset, offset + maxLines);
+    const height = Math.max(44, 26 + chunk.length * 13);
+    const chunkField = chunkIndex === 0 ? field : { ...field, label: `${baseLabel} (suite)` };
+    drawBox(doc, M.left, cur.y, CONTENT_W, chunkField, { lines: chunk, height });
+    cur.gap(height + 10);
+    offset += chunk.length;
+    chunkIndex += 1;
+    if (offset < measured.lines.length) {
+      doc.addPage();
+      cur.y = M.top;
+    }
+  }
 }
 
 export async function characterToPDF(character) {
@@ -169,10 +238,7 @@ export async function characterToPDF(character) {
     for (const field of fields) {
       if (field.type === 'longtext') {
         flush();
-        const measured = measureBox(doc, field, CONTENT_W);
-        cur.ensure(measured.height + 10);
-        drawBox(doc, M.left, cur.y, CONTENT_W, field, measured);
-        cur.gap(measured.height + 10);
+        drawLongTextBox(doc, cur, field);
         continue;
       }
       if (!pending) {
@@ -197,7 +263,7 @@ export async function characterToPDF(character) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10.5);
     doc.setTextColor(...INK);
-    for (const line of doc.splitTextToSize(markdownToPlainText(character.notes), CONTENT_W)) {
+    for (const line of doc.splitTextToSize(pdfSafe(markdownToPlainText(character.notes)), CONTENT_W)) {
       cur.ensure(16);
       doc.text(line, M.left, cur.y);
       cur.gap(14);
@@ -249,7 +315,7 @@ function drawMarkdown(doc, cur, markdown) {
         doc.setFont('times', 'bold');
         doc.setFontSize(size);
         doc.setTextColor(...INK);
-        for (const line of doc.splitTextToSize(stripInline(block.text), CONTENT_W)) {
+        for (const line of doc.splitTextToSize(pdfSafe(stripInline(block.text)), CONTENT_W)) {
           cur.ensure(size + 10);
           doc.text(line, M.left, cur.y);
           cur.gap(size + 6);
@@ -268,7 +334,7 @@ function drawMarkdown(doc, cur, markdown) {
         doc.setFont('times', 'italic');
         doc.setFontSize(11);
         doc.setTextColor(...INK_SOFT);
-        const lines = doc.splitTextToSize(stripInline(block.text), CONTENT_W - 22);
+        const lines = doc.splitTextToSize(pdfSafe(stripInline(block.text)), CONTENT_W - 22);
         for (const line of lines) {
           cur.ensure(18);
           doc.setDrawColor(...GOLD);
@@ -284,7 +350,7 @@ function drawMarkdown(doc, cur, markdown) {
         doc.setFont('courier', 'normal');
         doc.setFontSize(9.5);
         doc.setTextColor(...INK);
-        for (const line of doc.splitTextToSize(block.text, CONTENT_W - 16)) {
+        for (const line of doc.splitTextToSize(pdfSafe(block.text), CONTENT_W - 16)) {
           cur.ensure(15);
           doc.text(line, M.left + 8, cur.y);
           cur.gap(12);
@@ -298,7 +364,7 @@ function drawMarkdown(doc, cur, markdown) {
         doc.setTextColor(...INK);
         block.items.forEach((item, n) => {
           const bullet = block.ordered ? `${n + 1}.` : '•';
-          const lines = doc.splitTextToSize(stripInline(item), CONTENT_W - 22);
+          const lines = doc.splitTextToSize(pdfSafe(stripInline(item)), CONTENT_W - 22);
           lines.forEach((line, li) => {
             cur.ensure(16);
             if (li === 0) doc.text(bullet, M.left + 4, cur.y);
@@ -313,7 +379,7 @@ function drawMarkdown(doc, cur, markdown) {
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(11);
         doc.setTextColor(...INK);
-        for (const line of doc.splitTextToSize(stripInline(block.text), CONTENT_W)) {
+        for (const line of doc.splitTextToSize(pdfSafe(stripInline(block.text)), CONTENT_W)) {
           cur.ensure(16);
           doc.text(line, M.left, cur.y);
           cur.gap(14);
@@ -352,7 +418,7 @@ export async function journalToPDF(entries, { title = "Journal d'aventure", char
       doc.setFont('times', 'bold');
       doc.setFontSize(17);
       doc.setTextColor(...INK);
-      for (const line of doc.splitTextToSize(entry.title || 'Sans titre', CONTENT_W)) {
+      for (const line of doc.splitTextToSize(pdfSafe(entry.title || 'Sans titre'), CONTENT_W)) {
         cur.ensure(24);
         doc.text(line, M.left, cur.y);
         cur.gap(21);
@@ -362,7 +428,7 @@ export async function journalToPDF(entries, { title = "Journal d'aventure", char
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(9.5);
         doc.setTextColor(...INK_SOFT);
-        doc.text(meta, M.left, cur.y);
+        doc.text(pdfSafe(meta), M.left, cur.y);
         cur.gap(16);
       }
     }
@@ -373,7 +439,7 @@ export async function journalToPDF(entries, { title = "Journal d'aventure", char
       doc.setFontSize(9.5);
       doc.setTextColor(...INK_SOFT);
       cur.ensure(18);
-      doc.text(`Personnages : ${linked.join(', ')}`, M.left, cur.y);
+      doc.text(pdfSafe(`Personnages : ${linked.join(', ')}`), M.left, cur.y);
       cur.gap(20);
     }
 

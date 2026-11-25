@@ -228,7 +228,7 @@
   font-weight: 600;
   background: transparent;
   border-color: transparent;
-  min-height: 38px;
+  min-height: var(--tap);
   padding: 6px 8px;
 }
 
@@ -237,7 +237,7 @@
 
 .fieldrow__value {
   grid-area: value;
-  min-height: 40px;
+  min-height: var(--tap);
 }
 
 .fieldrow__main > .btn { grid-area: settings; }

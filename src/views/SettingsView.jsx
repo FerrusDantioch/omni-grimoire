@@ -14,6 +14,8 @@ const THEMES = [
   { id: 'omni-systeme', label: 'Omni-système' },
 ];
 
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.1.0';
+
 function Row({ icon, title, description, children }) {
   return (
     <div className="setting-row">
@@ -30,23 +32,70 @@ function Row({ icon, title, description, children }) {
 }
 
 export default function SettingsView() {
-  const { theme, changeTheme, characters, journal, documents, tracks, playlists, encounters, sounds, reloadAll, toast } = useApp();
+  const {
+    theme,
+    changeTheme,
+    vibration = true,
+    changeVibration,
+    characters,
+    journal,
+    documents,
+    tracks,
+    playlists,
+    encounters,
+    sounds,
+    reloadAll,
+    toast,
+  } = useApp();
   const { canInstall, installed, promptInstall } = useInstallPrompt();
   const online = useOnline();
 
   const [usage, setUsage] = useState(null);
+  const [persisted, setPersisted] = useState(null);
   const [busy, setBusy] = useState('');
   const [confirmWipe, setConfirmWipe] = useState(false);
 
   const refreshUsage = () => db.storageEstimate().then(setUsage);
+  const refreshPersistence = async () => {
+    if (!navigator.storage?.persisted) {
+      setPersisted(null);
+      return;
+    }
+    try {
+      setPersisted(await navigator.storage.persisted());
+    } catch {
+      setPersisted(null);
+    }
+  };
+
   useEffect(() => {
     refreshUsage();
+    refreshPersistence();
   }, []);
 
+  const requestPersist = async () => {
+    if (!navigator.storage?.persist) return;
+    setBusy('persist');
+    try {
+      const granted = await navigator.storage.persist();
+      setPersisted(granted);
+      toast(
+        granted
+          ? 'Tes données sont maintenant protégées contre l’effacement automatique.'
+          : 'Le navigateur n’a pas accordé la protection automatique. Pense à exporter une sauvegarde régulièrement.',
+        granted ? 'ok' : 'info'
+      );
+    } catch {
+      toast('Impossible de demander la protection du stockage.', 'err');
+    } finally {
+      setBusy('');
+    }
+  };
+
   /**
-   * Sauvegarde complete (PDF et sons encodes dans le fichier, qui peut peser
-   * des centaines de Mo) ou legere (fiches, journal, combats, playlists,
-   * historique de des : quelques Ko, ideale pour une sauvegarde reguliere).
+   * Sauvegarde complète (PDF et sons encodés dans le fichier, qui peut peser
+   * des centaines de Mo) ou légère (fiches, journal, combats, playlists,
+   * historique de dés : quelques Ko, idéale pour une sauvegarde régulière).
    */
   const exportBackup = async (includeFiles) => {
     const kind = includeFiles ? 'export' : 'export-light';
@@ -89,8 +138,8 @@ export default function SettingsView() {
     }
   };
 
-  // Poids des fichiers stockes ; l'encodage en data-URL de la sauvegarde
-  // complete y ajoute environ un tiers (d'ou le facteur 1,37 affiche).
+  // Poids des fichiers stockés ; l'encodage en data-URL de la sauvegarde
+  // complète y ajoute environ un tiers (d'où le facteur 1,37 affiché).
   const fileBytes = [...documents, ...tracks, ...sounds].reduce((sum, item) => sum + (item.size || 0), 0);
 
   const counts = [
@@ -103,14 +152,16 @@ export default function SettingsView() {
     { label: 'Ambiances', value: sounds.length },
   ];
 
+  const baseUrl = import.meta.env.BASE_URL;
+
   return (
     <>
       <div className="page-head">
-        <h2>Réglages</h2>
+        <h1>Réglages</h1>
       </div>
 
       <section className="card setting-group">
-        <h3 className="setting-group__title">Apparence</h3>
+        <h2 className="setting-group__title">Apparence</h2>
         <Row
           icon={theme === 'parchemin' ? 'sun' : 'moon'}
           title="Thème"
@@ -136,7 +187,25 @@ export default function SettingsView() {
       </section>
 
       <section className="card setting-group">
-        <h3 className="setting-group__title">Application</h3>
+        <h2 className="setting-group__title">Application</h2>
+        <Row
+          icon="dice"
+          title="Vibrations lors des jets de dés"
+          description="Fait vibrer l’appareil à chaque lancer de dés (si ton navigateur le permet)."
+        >
+          <label className="setting-switch">
+            <input
+              type="checkbox"
+              role="switch"
+              aria-label="Vibrations lors des jets de dés"
+              checked={Boolean(vibration)}
+              onChange={(e) => changeVibration?.(e.target.checked)}
+            />
+            <span className="setting-switch__track" aria-hidden="true">
+              <span className="setting-switch__thumb" />
+            </span>
+          </label>
+        </Row>
         <Row
           icon="download"
           title="Installer sur l’appareil"
@@ -144,8 +213,8 @@ export default function SettingsView() {
             installed
               ? 'Déjà installée — elle s’ouvre comme une application.'
               : canInstall
-                ? 'Ajoutez une icône et un lancement plein écran.'
-                : 'Utilisez « Ajouter à l’écran d’accueil » dans le menu du navigateur.'
+                ? 'Ajoute une icône et un lancement en plein écran.'
+                : 'Utilise « Ajouter à l’écran d’accueil » dans le menu de ton navigateur.'
           }
         >
           <button type="button" className="btn btn--sm btn--primary" onClick={promptInstall} disabled={!canInstall || installed}>
@@ -166,7 +235,7 @@ export default function SettingsView() {
       </section>
 
       <section className="card setting-group">
-        <h3 className="setting-group__title">Données</h3>
+        <h2 className="setting-group__title">Données</h2>
 
         <div className="stats-grid">
           {counts.map((c) => (
@@ -183,9 +252,37 @@ export default function SettingsView() {
               <span style={{ width: `${Math.min(100, Math.max(1, usage.ratio * 100))}%` }} />
             </div>
             <span className="small muted">
-              {formatBytes(usage.usage)} utilisés sur {formatBytes(usage.quota)} disponibles
+              {formatBytes(usage.usage)} utilisés sur {formatBytes(usage.quota)} disponibles (ce quota couvre l’ensemble
+              des applications du site ferrusdantioch.github.io).
             </span>
           </div>
+        )}
+
+        {persisted !== null && (
+          <Row
+            icon="save"
+            title="Persistance du stockage"
+            description={
+              persisted
+                ? 'Tes données sont protégées : le navigateur ne les effacera pas automatiquement faute d’espace.'
+                : 'Le navigateur peut effacer les données locales en cas de manque d’espace. Active cette protection pour l’éviter.'
+            }
+          >
+            {persisted ? (
+              <span className="chip chip--static chip--on">Protégées</span>
+            ) : navigator.storage?.persist ? (
+              <button
+                type="button"
+                className="btn btn--sm"
+                onClick={requestPersist}
+                disabled={Boolean(busy)}
+              >
+                {busy === 'persist' ? 'En cours…' : 'Protéger mes données contre l’effacement'}
+              </button>
+            ) : (
+              <span className="chip chip--static">Non protégées</span>
+            )}
+          </Row>
         )}
 
         <Row
@@ -215,7 +312,7 @@ export default function SettingsView() {
         <Row
           icon="upload"
           title="Restaurer"
-          description="Fusionne le contenu d’une sauvegarde (légère ou complète) avec les données actuelles."
+          description="Fusionne le contenu d’une sauvegarde (légère ou complète) avec tes données actuelles."
         >
           <button type="button" className="btn btn--sm" onClick={importBackup} disabled={Boolean(busy)}>
             <Icon name="upload" />
@@ -223,7 +320,7 @@ export default function SettingsView() {
           </button>
         </Row>
 
-        <Row icon="trash" title="Tout effacer" description="Supprime définitivement l’ensemble des données locales.">
+        <Row icon="trash" title="Tout effacer" description="Supprime définitivement l’ensemble de tes données locales.">
           <button type="button" className="btn btn--sm btn--danger" onClick={() => setConfirmWipe(true)}>
             Effacer
           </button>
@@ -231,66 +328,84 @@ export default function SettingsView() {
       </section>
 
       <section className="card setting-group">
-        <h3 className="setting-group__title">À propos</h3>
-        <p className="small muted" style={{ padding: '0 14px 14px', margin: 0 }}>
-          <strong>Omni-Grimoire</strong> — compagnon de jeu de rôle fonctionnant entièrement sur votre appareil.
-          Aucune donnée n’est envoyée sur un serveur : fiches, journal, documents et musiques restent
-          dans le stockage local du navigateur. Pensez à exporter une sauvegarde de temps en temps.
-        </p>
-        <p className="small muted" style={{ padding: '0 14px 14px', margin: 0 }}>
-          Cette application a été conçue et développée par Ferrus Dantioch, avec l'aide de
-          l'intelligence artificielle.
-        </p>
-        {/* Lien discret vers les autres projets : même couleur que le texte autour (juste
-            souligné), ouvert dans un nouvel onglet pour ne pas quitter l'application. */}
-        <p className="small muted" style={{ padding: '0 14px 14px', margin: 0 }}>
-          Voir d'autres projets :{' '}
-          <a
-            href="https://ferrusdantioch.github.io/omni-systeme/"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: 'inherit', overflowWrap: 'anywhere' }}
-          >
-            https://ferrusdantioch.github.io/omni-systeme/
-          </a>
-        </p>
-        {/* Retours : une adresse-alias (Proton) créée pour ça. Le lien ouvre seulement
-            l'application de messagerie, adresse et sujet déjà remplis : rien ne part tout seul. */}
-        <p className="small muted" style={{ padding: '0 14px 14px', margin: 0 }}>
-          Une idée, une remarque, un souci ? Vos retours sont les bienvenus :{' '}
-          <a
-            href="mailto:omni-systeme.choking513@passmail.net?subject=Retour%20sur%20Omni-Grimoire"
-            style={{ color: 'inherit', overflowWrap: 'anywhere' }}
-          >
-            omni-systeme.choking513@passmail.net
-          </a>
-        </p>
-        {/* Note d'installation : Chrome Android n'installe qu'une seule
-            application par adresse de site, et toutes les applications de
-            ferrusdantioch.github.io partagent la même. Masquée une fois
-            l'application installée (règle .note-installation de la feuille de style). */}
-        <p className="small muted note-installation" style={{ padding: '0 14px 14px', margin: 0 }}>
-          <strong>Installation sur Android&nbsp;:</strong> si Chrome indique «&nbsp;Cette appli est déjà installée&nbsp;» alors qu'elle ne l'est pas, c'est une limite de Chrome quand une autre application de ce site est déjà installée. Utilisez un autre navigateur (Brave, par exemple), ou choisissez «&nbsp;Créer un raccourci&nbsp;».
-        </p>
-        {/* Licence du code : texte complet dans le fichier LICENSE du dépôt. */}
-        <p className="small muted" style={{ padding: '0 14px 14px', margin: 0 }}>
-          © 2026 Ferrus Dantioch —{' '}
-          <a
-            href="https://creativecommons.org/licenses/by-nc-nd/4.0/deed.fr"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: 'inherit', overflowWrap: 'anywhere' }}
-          >
-            Creative Commons BY-NC-ND 4.0
-          </a>{' '}
-          : partage autorisé en citant l'auteur, sans usage commercial ni modification.
-        </p>
+        <h2 className="setting-group__title">À propos</h2>
+
+        <div className="about-hero">
+          <img
+            src={`${baseUrl}icons/logo-omni-systeme.webp`}
+            alt="Logo Omni-Système"
+            width="64"
+            height="64"
+            className="about-hero__logo"
+          />
+          <div className="about-hero__meta">
+            <strong className="about-hero__name">Omni-Grimoire</strong>
+            <span className="about-version">Version {APP_VERSION}</span>
+          </div>
+        </div>
+
+        <div className="about-body">
+          <p>
+            Compagnon de jeu de rôle fonctionnant entièrement sur ton appareil. Aucune donnée n’est envoyée sur un
+            serveur : fiches, journal, documents et musiques restent dans le stockage local de ton navigateur. Pense à
+            exporter une sauvegarde de temps en temps.
+          </p>
+          <p>Application réalisée par Ferrus Dantioch, avec l&apos;aide de l&apos;intelligence artificielle.</p>
+          <p>
+            <strong>Confidentialité et contact&nbsp;:</strong> aucune donnée personnelle n’est collectée ni transmise.
+            Une idée, une remarque, un souci ? Tes retours sont les bienvenus :{' '}
+            <a href="mailto:omni-systeme.choking513@passmail.net?subject=Retour%20sur%20Omni-Grimoire">
+              omni-systeme.choking513@passmail.net
+            </a>
+          </p>
+          <p>
+            © 2026 Ferrus Dantioch —{' '}
+            <a
+              href="https://creativecommons.org/licenses/by-nc-nd/4.0/deed.fr"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Creative Commons Attribution - Pas d’Utilisation Commerciale - Pas de Modification 4.0 International
+              (CC BY-NC-ND 4.0)
+            </a>{' '}
+            : partage autorisé en citant Ferrus Dantioch, sans usage commercial et sans œuvre dérivée ou modifiée sans
+            autorisation.
+          </p>
+          <div className="about-links">
+            <a
+              href="https://ferrusdantioch.github.io/omni-systeme/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn--sm"
+            >
+              Découvrir l&apos;Omni-système
+            </a>
+            <a
+              href={`${baseUrl}licences-tierces.txt`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn--sm btn--ghost"
+            >
+              Licences des bibliothèques tierces
+            </a>
+          </div>
+          {/* Note d'installation : Chrome Android n'installe qu'une seule
+              application par adresse de site, et toutes les applications de
+              ferrusdantioch.github.io partagent la même. Masquée une fois
+              l'application installée (règle .note-installation de la feuille de style). */}
+          <p className="note-installation">
+            <strong>Installation sur Android&nbsp;:</strong> si Chrome indique «&nbsp;Cette appli est déjà
+            installée&nbsp;» alors qu’elle ne l’est pas, c’est une limite de Chrome quand une autre application de ce
+            site est déjà installée. Utilise un autre navigateur (Brave, par exemple), ou choisis «&nbsp;Créer un
+            raccourci&nbsp;».
+          </p>
+        </div>
       </section>
 
       <ConfirmDialog
         open={confirmWipe}
         title="Effacer toutes les données ?"
-        message="Personnages, journal, documents, musiques et historique de dés seront définitivement supprimés. Exportez une sauvegarde avant si besoin."
+        message="Personnages, journal, documents, musiques et historique de dés seront définitivement supprimés. Exporte une sauvegarde avant si besoin."
         confirmLabel="Tout effacer"
         onConfirm={async () => {
           await db.wipeAll();
