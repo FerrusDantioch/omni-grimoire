@@ -60,12 +60,17 @@ export function useMiseAJour() {
   useEffect(() => {
     const prevenir = () => setPrete(true);
     abonnes.add(prevenir);
+    if (appliquerMiseAJour !== null) setPrete(true);
     return () => abonnes.delete(prevenir);
   }, []);
-  const mettreAJour = useCallback(() => {
+  const mettreAJour = useCallback(async () => {
     if (!appliquerMiseAJour) return;
     setEnCours(true);
-    appliquerMiseAJour();
+    try {
+      await appliquerMiseAJour();
+    } catch {
+      setEnCours(false);
+    }
   }, []);
   return { prete, enCours, mettreAJour };
 }

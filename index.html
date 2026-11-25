@@ -3,15 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'"
+    />
     <meta name="theme-color" content="#141019" media="(prefers-color-scheme: dark)" />
-    <meta name="theme-color" content="#f3ead8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#f5ebd9" media="(prefers-color-scheme: light)" />
     <meta name="description" content="Omni-Grimoire — compagnon de jeu de rôle hors ligne : fiches de personnage, journal, PDF, dés et musique." />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Omni-Grimoire" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
+    <link rel="apple-touch-icon" href="%BASE_URL%icons/apple-touch-icon.png" />
+    <script src="%BASE_URL%theme-init.js"></script>
     <title>Omni-Grimoire — Compagnon JDR</title>
   </head>
   <body>

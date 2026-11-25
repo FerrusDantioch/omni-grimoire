@@ -22,9 +22,9 @@ const clampVolume = (value) => Math.max(0, Math.min(1, Number(value) || 0));
  * (hors rendu React) ; son URL d'objet est revoquee quand le son disparait.
  */
 export function AmbianceProvider({ children }) {
-  const { sounds, toast } = useApp();
+  const { sounds, toast, reloadVersion } = useApp();
 
-  const playersRef = useRef(new Map()); // id -> { audio, url }
+  const playersRef = useRef(new Map()); // id -> { audio, url, blob }
   const volumeRef = useRef(0.9);
   const [playingIds, setPlayingIds] = useState(() => new Set());
   const [volume, setVolumeState] = useState(0.9);
@@ -37,6 +37,19 @@ export function AmbianceProvider({ children }) {
       return next;
     });
   }, []);
+
+  const disposePlayer = useCallback(
+    (id, player) => {
+      if (!player) return;
+      player.audio.pause();
+      URL.revokeObjectURL(player.url);
+      if (playersRef.current.get(id) === player) {
+        playersRef.current.delete(id);
+      }
+      markStopped(id);
+    },
+    [markStopped]
+  );
 
   /* Volume propre aux ambiances, distinct de celui de la musique. */
   useEffect(() => {
@@ -60,25 +73,38 @@ export function AmbianceProvider({ children }) {
 
   const getPlayer = useCallback(
     (sound) => {
+      if (!(sound?.blob instanceof Blob)) return null;
       let player = playersRef.current.get(sound.id);
+      if (player && player.blob !== sound.blob) {
+        disposePlayer(sound.id, player);
+        player = null;
+      }
       if (!player) {
         const url = URL.createObjectURL(sound.blob);
         const audio = new Audio(url);
         audio.volume = volumeRef.current;
-        // Un son joue sans boucle s'arrete seul : la pastille doit le suivre.
+        const nextPlayer = { audio, url, blob: sound.blob };
+        // Un son joue sans boucle ou mis en pause/erreur resynchronise la pastille.
         audio.addEventListener('ended', () => markStopped(sound.id));
-        player = { audio, url };
+        audio.addEventListener('pause', () => markStopped(sound.id));
+        audio.addEventListener('error', () => disposePlayer(sound.id, nextPlayer));
+        player = nextPlayer;
         playersRef.current.set(sound.id, player);
       }
       return player;
     },
-    [markStopped]
+    [markStopped, disposePlayer]
   );
 
   /** Lance le son depuis le debut, ou l'arrete s'il joue deja. */
   const toggle = useCallback(
     (sound) => {
-      const { audio } = getPlayer(sound);
+      const player = getPlayer(sound);
+      if (!player) {
+        toast('Fichier audio introuvable.', 'err');
+        return;
+      }
+      const { audio } = player;
       if (!audio.paused) {
         audio.pause();
         audio.currentTime = 0;
@@ -90,9 +116,12 @@ export function AmbianceProvider({ children }) {
       audio
         .play()
         .then(() => setPlayingIds((set) => new Set(set).add(sound.id)))
-        .catch(() => toast('Lecture impossible pour ce fichier.', 'err'));
+        .catch(() => {
+          disposePlayer(sound.id, player);
+          toast('Lecture impossible pour ce fichier.', 'err');
+        });
     },
-    [getPlayer, markStopped, toast]
+    [getPlayer, markStopped, disposePlayer, toast]
   );
 
   const stopAll = useCallback(() => {
@@ -103,21 +132,18 @@ export function AmbianceProvider({ children }) {
     setPlayingIds(new Set());
   }, []);
 
-  /* Suit la liste des sons : mode boucle modifie, son supprime. */
+  /* Suit la liste des sons : mode boucle modifie, son supprime ou remplace apres restauration. */
   useEffect(() => {
     const byId = new Map(sounds.map((s) => [s.id, s]));
     for (const [id, player] of playersRef.current) {
       const sound = byId.get(id);
-      if (sound) {
+      if (sound && player.blob === sound.blob) {
         player.audio.loop = Boolean(sound.loop);
         continue;
       }
-      player.audio.pause();
-      URL.revokeObjectURL(player.url);
-      playersRef.current.delete(id);
-      markStopped(id);
+      disposePlayer(id, player);
     }
-  }, [sounds, markStopped]);
+  }, [sounds, reloadVersion, disposePlayer]);
 
   /* Fermeture de l'application : on libere tout. */
   useEffect(() => {

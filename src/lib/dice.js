@@ -209,6 +209,8 @@ export function buildExpression(count, sides) {
  * - « d20 »   : formule classique (valeur - 10) / 2 arrondie vers le bas
  */
 export function statToModifier(rawValue, mode = 'raw') {
+  if (rawValue === '' || rawValue === null || rawValue === undefined) return null;
+  if (typeof rawValue === 'string' && rawValue.trim() === '') return null;
   const value = Number(rawValue);
   if (!Number.isFinite(value)) return null;
   if (mode === 'dnd') return Math.floor((value - 10) / 2);

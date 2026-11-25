@@ -23,6 +23,7 @@
 .dice-fab--open { background: linear-gradient(160deg, var(--accent), #c1913f); color: var(--accent-ink); }
 /* Theme Omni-systeme : le bas du degrade passe de l'or a un violet plus profond. */
 [data-theme="omni-systeme"] .dice-fab--open { background: linear-gradient(160deg, var(--accent), #8a5cf5); }
+[data-theme="parchemin"] .dice-fab--open { background: linear-gradient(160deg, var(--accent), #5e3d0a); }
 
 .dice-fab__icon { transition: transform .5s var(--ease); }
 .dice-fab--rolling .dice-fab__icon { animation: dice-tumble .62s var(--ease); }
@@ -169,7 +170,7 @@
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 10px;
-  min-height: 34px;
+  min-height: var(--tap);
 }
 
 .dice-hint { margin: 0 0 10px; }
@@ -259,6 +260,7 @@
 
 .dice-manual__input {
   width: 56px;
+  min-height: var(--tap);
   text-align: center;
   font: inherit;
   font-weight: 700;
@@ -320,6 +322,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  min-height: var(--tap);
   padding: 6px 0;
 }
 

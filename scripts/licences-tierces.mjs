@@ -51,12 +51,50 @@ function texteDeLicence(dossier) {
     .join('\n\n');
 }
 
+// Paquets Workbox reellement embarques dans le build navigateur (sw.js +
+// workbox-window) : vite-plugin-pwa etant en devDependencies, ils portent
+// `dev: true` dans package-lock.json. `workbox-build` et les modules
+// inutilises (Node-only) ne sont pas inclus.
+const WORKBOX_EMBARQUES = new Set([
+  'workbox-core',
+  'workbox-precaching',
+  'workbox-routing',
+  'workbox-strategies',
+  'workbox-window',
+]);
+
+// Dependances optionnelles de pdfjs-dist / jspdf ou outils Node-only jamais
+// publies dans dist/ (aussi marques `optional: true` dans package-lock.json).
+const EXCLUSIONS_NON_PUBLIEES = new Set([
+  '@napi-rs/canvas',
+  'html2canvas',
+  'canvg',
+  'core-js',
+  'dompurify',
+  'rgbcolor',
+  'stackblur-canvas',
+  'svg-pathdata',
+  'raf',
+  'performance-now',
+  'regenerator-runtime',
+  'css-line-break',
+  'text-segmentation',
+  'utrie',
+  'base64-arraybuffer',
+]);
+
 // Chaque entree de "packages" (sauf "", le projet lui-meme) est une
-// bibliotheque installee ; "dev: true" marque les outils de developpement.
-// "os" ou "cpu" marquent un programme compile pour un systeme precis
-// (Windows, Android...) : il ne sert jamais dans le navigateur.
+// bibliotheque installee ; "dev: true" marque les outils de developpement,
+// "optional: true" les greffons optionnels non embarques, "os"/"cpu" les
+// binaires natifs, et "@types/*" les definitions TypeScript absentes de dist/.
 const paquets = Object.entries(verrou.packages)
-  .filter(([chemin, infos]) => chemin && !infos.dev && !infos.os && !infos.cpu)
+  .filter(([chemin, infos]) => {
+    if (!chemin || infos.os || infos.cpu) return false;
+    const nom = chemin.split('node_modules/').pop();
+    if (nom.startsWith('@types/') || EXCLUSIONS_NON_PUBLIEES.has(nom)) return false;
+    if (WORKBOX_EMBARQUES.has(nom)) return true;
+    return !infos.dev && !infos.optional;
+  })
   .map(([chemin, infos]) => ({
     nom: chemin.split('node_modules/').pop(),
     version: infos.version,

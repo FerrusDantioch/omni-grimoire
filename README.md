@@ -1,21 +1,21 @@
-# Omni-Grimoire — Compagnon JDR
+# Omni-Grimoire — Compagnon JDR (v1.1.0)
 
 Application web progressive (PWA) pour le jeu de rôle solo et multi-joueurs.
 Installable sur mobile et ordinateur sans passer par les stores, fonctionne
 entièrement hors ligne, et ne transmet aucune donnée à un serveur.
 
-**→ [Ouvrir l'application](https://ferrusdantioch.github.io/omni-grimoire/)**
+**→ [Ouvre l'application](https://ferrusdantioch.github.io/omni-grimoire/)**
 
-Ouvrez ce lien sur téléphone ou sur ordinateur, puis installez l'application
+Ouvre ce lien sur téléphone ou sur ordinateur, puis installe l'application
 depuis le bouton **Installer** de la barre du haut. Elle fonctionne ensuite sans
 réseau. Rien à installer par ailleurs : les sections ci-dessous ne concernent que
 le développement.
 
 ## Démarrer
 
-**Le plus simple : double-cliquer sur `Lancer Omni-Grimoire.cmd`.** Il installe les
+**Le plus simple : double-clique sur `Lancer Omni-Grimoire.cmd`.** Il installe les
 dépendances au premier lancement, compile l'application et ouvre le navigateur.
-Laissez la fenêtre noire ouverte pendant l'utilisation ; la fermer arrête le serveur.
+Laisse la fenêtre noire ouverte pendant l'utilisation ; la fermer arrête le serveur.
 
 En ligne de commande, c'est équivalent :
 
@@ -28,9 +28,11 @@ npm start
 | --- | --- |
 | `npm start` | Compile puis sert l'application sur http://localhost:4173 et ouvre le navigateur |
 | `npm run dev` | Serveur de développement (rechargement à chaud) sur http://localhost:5173 |
-| `npm run build` | Build de production dans `dist/` (manifeste + service worker) |
+| `npm run build` | Build de production dans `dist/` (manifeste + service worker + `licences-tierces.txt`) |
 | `npm run serve` | Sert `dist/` sans recompiler ni ouvrir le navigateur |
-| `npm test` | Tests du moteur de dés, du rendu markdown, de la sauvegarde différée et du partage de fiches (48 assertions) |
+| `npm test` | Tests unitaires du moteur de dés, du markdown, de la sauvegarde différée, des dates locales, de l'import et du partage de fiches |
+| `node tests/smoke.mjs` | Test Playwright sur `dist/` servi sous `/omni-grimoire/` (hors ligne, CSP, accessibilité, contraste Parchemin) |
+| `npm run licences` | Régénère `public/licences-tierces.txt` à partir de `package-lock.json` |
 | `npm run icons` | Régénère les icônes PNG de la PWA |
 
 ### Pourquoi un double-clic sur `index.html` donne une page blanche
@@ -60,18 +62,28 @@ C'est exactement ce que fait la version en ligne : **https://ferrusdantioch.gith
 En HTTPS, le service worker met tout en cache et l'application fonctionne ensuite
 sans réseau et sans rien lancer localement — c'est la façon recommandée de s'en servir.
 
-### Déploiement
+> **Installation sur Android (Chrome / Brave) :** sur Chrome Android, une seule
+> PWA d'une même origine (`ferrusdantioch.github.io`) peut être installée. Si
+> Chrome affiche « Cette appli est déjà installée » alors qu'une autre
+> application de l'écosystème Omni-Système l'est déjà, utilise **Brave** (qui
+> installe chaque application indépendamment) ou choisis « Créer un raccourci ».
 
-Chaque `push` sur `main` déclenche `.github/workflows/deploy.yml` : installation,
-tests, build et publication sur GitHub Pages. Le build de déploiement reçoit la
-variable `GITHUB_PAGES` avec le nom du dépôt, ce qui bascule `base`, `start_url`
-et `scope` sur `/<dépôt>/` ; sans cette variable (donc en local), tout reste à la
-racine et `Lancer Omni-Grimoire.cmd` continue de fonctionner.
+### Déploiement et intégration continue
+
+- Chaque `push` sur `main` déclenche `.github/workflows/deploy.yml` : installation,
+  tests, build et publication sur GitHub Pages. Le build de déploiement reçoit la
+  variable `GITHUB_PAGES` avec le nom du dépôt, ce qui bascule `base`, `start_url`
+  et `scope` sur `/<dépôt>/` ; sans cette variable (donc en local), tout reste à la
+  racine et `Lancer Omni-Grimoire.cmd` continue de fonctionner.
+- Les `pull_request` et les branches `fix/**`, `feat/**`, `claude/**` déclenchent
+  `.github/workflows/ci.yml` : `npm ci`, `npm test`, `npm run build`, vérification
+  que `public/licences-tierces.txt` est à jour (`git diff --exit-code`) et tests
+  Playwright (`node tests/smoke.mjs`).
 
 ## Fonctionnalités
 
 ### Fiches de personnage
-Structure entièrement libre : l'utilisateur nomme lui-même chaque **catégorie**
+Structure entièrement libre : tu nommes toi-même chaque **catégorie**
 (« Caractéristiques », « Magie », « Contacts »…) et chaque **champ**. Cinq types
 de champ : nombre, texte court, texte long, liste déroulante, case à cocher.
 Catégories et champs s'ajoutent, se renomment, se réordonnent et se suppriment à
@@ -93,12 +105,13 @@ Bouton flottant présent sur **tous** les onglets, affichant le dernier résulta
 Le panneau propose d4 à d100 avec compteur, une expression libre
 (`2d6+3`, `4d6kh3`, `2d20kl1`…), des raccourcis avantage / désavantage, une
 animation de lancer et l'historique des derniers jets (les 200 plus récents sont
-conservés, les 25 plus récents s'affichent, rejouables d'un tap).
+conservés, les 25 plus récents s'affichent, rejouables d'un tap). Un réglage
+permet d'activer ou de couper les **vibrations** dans les Réglages.
 
 **Modificateurs de personnage** — quand une fiche est ouverte, elle devient la
 fiche active : ses champs numériques marqués « utilisable comme modificateur »
-apparaissent en pastilles dans le panneau. On en sélectionne un ou plusieurs, on
-peut ajouter un bonus manuel temporaire, et le résultat est détaillé :
+apparaissent en pastilles dans le panneau. Tu en sélectionnes un ou plusieurs, tu
+peux ajouter un bonus manuel temporaire, et le résultat est détaillé :
 
 ```
 1d20 (19) + 3 (Force) = 22
@@ -113,9 +126,9 @@ notification, sans ouvrir le panneau.
 
 ### Journal d'aventure
 Éditeur markdown avec barre d'insertion et aperçu rendu. Les séances se
-regroupent par chapitre, portent une date et peuvent être liées à des
-personnages. Recherche plein texte, compteur de mots, export d'une séance ou du
-journal entier.
+regroupent par chapitre, portent une date (en heure locale) et peuvent être liées
+à des personnages. Recherche plein texte, compteur de mots, export d'une séance
+ou du journal entier.
 
 Le bouton dé de la barre d'insertion propose les derniers jets du lanceur ; un
 tap insère le jet choisi à l'emplacement du curseur, sur sa propre ligne :
@@ -125,8 +138,8 @@ tap insère le jet choisi à l'emplacement du curseur, sur sa propre ligne :
 ```
 
 ### Tracker de combat
-Onglet **Combat** : préparez des rencontres à l'avance ou montez-les à table.
-Chaque combatant porte nom, initiative, bonus d'initiative, points de vie (avec
+Onglet **Combat** : prépare des rencontres à l'avance ou monte-les à table.
+Chaque combattant porte nom, initiative, bonus d'initiative, points de vie (avec
 jauge) et une note libre pour les états (« empoisonné », « à terre »…).
 **L'initiative est tirée automatiquement** (`1d20 + bonus`) à l'ajout d'un
 combattant, et le bouton **Initiative** la retire pour tout le monde (avec
@@ -154,17 +167,19 @@ consultée est mémorisée.
 ### Lecteur de musique
 Import de fichiers audio locaux (mp3, ogg, wav, m4a, flac, opus), playlists,
 lecture aléatoire et répétition. L'élément audio vit au-dessus des vues : **la
-lecture continue quand on change d'onglet ou que l'onglet passe en arrière-plan**,
+lecture continue quand tu changes d'onglet ou que l'onglet passe en arrière-plan**,
 et l'API Media Session expose les commandes sur l'écran de verrouillage. Une
-barre de lecture compacte reste visible partout dans l'application.
+barre de lecture compacte reste visible partout dans l'application, avec la
+progression temporelle isolée dans `PlayerTimeContext` pour éviter les re-rendus
+inutiles du reste de l'interface.
 
 ### Soundboard d'ambiances
-Troisième onglet de la section Musique : importez des effets sonores ou des
-ambiances (mp3, ogg, wav…) et déclenchez-les d'un tap sur des pastilles.
+Troisième onglet de la section Musique : importe des effets sonores ou des
+ambiances (mp3, ogg, wav…) et déclenche-les d'un tap sur des pastilles.
 Chaque pastille a son bouton lecture/stop, un mode **boucle** (pluie, feu de
 camp…), un renommage et une suppression ; un volume global dédié est mémorisé.
 Plusieurs ambiances peuvent jouer en même temps, indépendamment du lecteur de
-musique. Comme la musique, **elles continuent quand on change d'onglet** : une
+musique. Comme la musique, **elles continuent quand tu changes d'onglet** : une
 pastille dans la barre du haut indique combien jouent et les arrête d'un tap.
 
 ### Export
@@ -186,6 +201,9 @@ Les réglages proposent en plus deux sauvegardes en JSON, et leur restauration :
 ## Architecture
 
 ```
+public/
+├── theme-init.js            application du thème avant le premier rendu (anti-flash)
+└── licences-tierces.txt     textes de licence des paquets tiers embarqués
 src/
 ├── main.jsx                 point d'entrée, enregistrement du service worker
 ├── App.jsx                  navigation, mise en page, raccourcis du manifeste
@@ -197,17 +215,19 @@ src/
 │   ├── characterFile.js     duplication, export et import d'une fiche seule
 │   ├── templates.js         modèles de fiches, fabriques de champs
 │   ├── utils.js             dates, tailles, fichiers, aides diverses
-│   └── usePwa.js            invite d'installation, état de connexion
+│   └── usePwa.js            invite d'installation, mise à jour manuelle, état réseau
 ├── state/
-│   ├── AppContext.jsx       données + CRUD + thème + notifications
+│   ├── AppContext.jsx       données + CRUD + thème + vibrations + notifications
 │   ├── DiceContext.jsx      jets, historique, modificateurs actifs
-│   ├── PlayerContext.jsx    lecteur audio global + Media Session
+│   ├── PlayerContext.jsx    lecteur audio global + PlayerTimeContext + Media Session
 │   └── AmbianceContext.jsx  ambiances du soundboard, jouées sur tous les onglets
 ├── components/              Icon, Modal, ExportModal, DiceWidget,
 │                            CharacterEditor, MiniPlayer, Soundboard, Toasts
 ├── views/                   Personnages, Journal, Combat, Documents, Musique,
-│                            Réglages
+│                            Réglages (avec « À propos » et lien licences-tierces.txt)
 └── styles/                  design system et styles partagés
+tests/
+└── smoke.mjs                suite Playwright sur dist/ (hors ligne, CSP, contraste, a11y)
 ```
 
 Les données vivent dans IndexedDB (`grimoire-jdr`) : `characters`, `journal`,
@@ -216,65 +236,77 @@ magasin `settings` clé/valeur.
 Les PDF et fichiers audio sont stockés en `Blob`. L'application demande la
 persistance du stockage au premier lancement pour éviter l'éviction automatique.
 
-## PWA
+## PWA, sécurité et vie privée
 
 - `manifest.webmanifest` : `display: standalone`, icônes 192/512 + maskable,
   raccourcis « Lancer 1d20 » et « Journal ».
-- Service worker Workbox (`registerType: autoUpdate`) : 14 fichiers pré-chargés,
-  environ 2,3 Mo, avec repli de navigation sur `index.html`.
+- Service worker Workbox (`registerType: prompt`, `workbox.cacheId: 'omni-grimoire'`) :
+  tout le build est pré-caché (dont le worker `pdf.js` et `licences-tierces.txt`),
+  avec repli de navigation sur `index.html`. La nouvelle version attend un clic
+  sur **Mettre à jour** dans la barre du haut (jamais de changement par surprise).
 - Bouton « Installer » affiché dans la barre du haut dès que le navigateur le
-  propose ; sur iOS, passer par « Ajouter à l'écran d'accueil ».
+  propose ; sur iOS, passe par « Ajouter à l'écran d'accueil ».
+- **CSP stricte** dans `index.html` (`default-src 'none'`, `script-src 'self'`,
+  `connect-src 'self'`) : aucun appel réseau externe, aucun script inline
+  (`public/theme-init.js` est servi comme fichier statique `'self'`), validation
+  des `data:` URLs à la restauration de sauvegarde.
 
 Le service worker n'est actif que sur le build de production servi en HTTP(S) :
-`npm run build && npm run preview`, puis couper le réseau pour vérifier.
+`npm run build && npm run serve`, puis coupe le réseau pour vérifier.
 
-## Responsive
+## Responsive et accessibilité
 
 Conception mobile d'abord. Barre d'onglets en bas sous 900 px, rail latéral
-au-delà ; zones tactiles de 44 px minimum, marges de sécurité (encoches) prises
-en compte. Trois thèmes, **grimoire** (sombre), **parchemin** (clair) et
-**omni-système** (sombre, aux couleurs violettes du logo de l'Omni-système).
+au-delà ; **zones tactiles de 44 px minimum** sur tous les boutons (y compris les
+boutons compacts), un seul `<h1>` visible, contour de focus clavier visible,
+respect du réglage système « réduire les animations », réglage dédié pour couper
+les **vibrations** dans Réglages, et marges de sécurité (encoches) prises en
+compte. Trois thèmes : **Grimoire** (sombre), **Parchemin** (clair, contraste
+vérifié >= 4,5:1) et **Omni-système** (sombre, aux couleurs violettes du logo de
+l'Omni-Système).
 
 ## Vérifications effectuées
 
-- `npm test` : 48 assertions sur l'analyse d'expressions, les bornes de tirage,
-  `kh`/`kl`, les modificateurs, la détection des critiques, le rendu markdown,
-  la neutralisation du HTML et des liens `javascript:`, la sauvegarde différée
-  des éditeurs (un élément supprimé ne doit jamais être réenregistré),
-  l'affichage des dates du journal quel que soit le fuseau horaire, la ligne
-  de jet insérée dans le journal, et la duplication / l'import de fiches
-  (identifiants neufs, fichier abîmé neutralisé).
-- Parcours manuel : création de fiche, modificateur Force 16 → +3 appliqué à un
-  `1d20`, journal avec aperçu markdown, visionneuse PDF sur deux pages, mode
-  battlemap avec grille, lecture audio avec enchaînement des pistes et barre
-  globale, thèmes clair et sombre, absence de débordement horizontal à 360 et
-  430 px.
-- Exports PDF relus par extraction de texte : titres, grille deux colonnes,
-  pieds de page numérotés.
-- Sauvegarde JSON : export, effacement complet, restauration — le PDF revient
-  identique octet pour octet.
-- Service worker vérifié en conditions réelles sur l'adresse publique : il
-  s'enregistre, s'active, contrôle la page, et met en cache les 14 fichiers du
-  pré-cache (worker pdf.js compris). Le repli de navigation résout bien
-  `index.html` depuis le cache.
+- `npm test` (`scripts/test-core.mjs`) : tests unitaires sur l'analyse
+  d'expressions, les bornes de tirage, `kh`/`kl`, les modificateurs (y compris
+  champs vides/`null`), la détection des critiques, le rendu markdown (liens avec
+  `__`, neutralisation du HTML et des liens `javascript:`), la sauvegarde différée
+  des éditeurs, la date locale de `createJournalEntry()` et l'affichage des dates
+  quel que soit le fuseau horaire, la ligne de jet insérée dans le journal, le
+  rejet des URL `https://` à l'import de sauvegarde, la regex PV de `CombatView`
+  (qui ignore `Survie`), et la duplication / l'import de fiches.
+- `node tests/smoke.mjs` : vérifications Playwright automatisées sur `dist/`
+  servi sous `/omni-grimoire/` en viewport mobile `390×844` (0 erreur console,
+  0 `pageerror`, 0 violation CSP, 0 requête externe, un seul `<h1>` visible, pas
+  de débordement horizontal, Service Worker actif et rechargement hors ligne,
+  accès hors ligne à `licences-tierces.txt`, contraste du bouton primaire en
+  thème Parchemin >= 4,5:1, présence du réglage « Vibrations » et du bloc
+  « À propos » complet).
 
 ---
 
-## Licence
+## Licence, auteur et contact
 
-**© 2026 Ferrus Dantioch — Creative Commons BY-NC-ND 4.0**
-([résumé de la licence en français](https://creativecommons.org/licenses/by-nc-nd/4.0/deed.fr))
+- **Auteur** : **Ferrus Dantioch** (application conçue et développée par Ferrus
+  Dantioch, avec l'aide de l'intelligence artificielle)
+- **Contact officiel** : **`omni-systeme.choking513@passmail.net`**
+- **Licence** : **© 2026 Ferrus Dantioch — Creative Commons Attribution - Pas
+  d'Utilisation Commerciale - Pas de Modification 4.0 International (`CC BY-NC-ND 4.0`)**
+  ([résumé de la licence en français](https://creativecommons.org/licenses/by-nc-nd/4.0/deed.fr))
 
-En clair : le partage est autorisé, à l'identique et en citant l'auteur ;
-l'usage commercial est interdit ; la modification et les œuvres dérivées
-sont interdites. Le logiciel est fourni « en l'état », sans aucune garantie.
+En français, cette licence signifie que :
+- tu es autorisé à partager et copier l'application à l'identique, à condition de
+  citer son auteur (**Ferrus Dantioch**) ;
+- toute utilisation commerciale est interdite ;
+- toute modification, transformation ou œuvre dérivée est interdite sans
+  autorisation préalable.
 
-Texte complet dans le fichier [LICENSE](LICENSE) : le texte officiel en
-anglais, suivi de la traduction française officielle publiée par Creative
-Commons.
+Le logiciel est fourni « en l'état », sans aucune garantie. Texte complet dans
+le fichier [LICENSE](LICENSE) : le texte officiel en anglais, suivi de la
+traduction française officielle publiée par Creative Commons.
 
-Les bibliothèques tierces utilisées par ce projet (voir `package.json`)
-restent soumises à leurs propres licences. Leurs textes de licence sont
-rassemblés dans [`public/licences-tierces.txt`](public/licences-tierces.txt),
-publié avec l'application et refait automatiquement à chaque construction
-(commande `npm run licences`, script `scripts/licences-tierces.mjs`).
+Les bibliothèques tierces embarquées dans l'application restent soumises à leurs
+propres licences. Leurs textes de licence sont rassemblés dans
+[`public/licences-tierces.txt`](public/licences-tierces.txt), précaché pour le
+hors-ligne, lié dans « À propos » et régénéré automatiquement avant chaque build
+(`npm run licences`, script `scripts/licences-tierces.mjs`).

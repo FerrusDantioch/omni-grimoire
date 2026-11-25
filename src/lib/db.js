@@ -134,9 +134,94 @@ const blobToDataURL = (blob) =>
     reader.readAsDataURL(blob);
   });
 
-async function dataURLToBlob(dataUrl) {
-  const res = await fetch(dataUrl);
-  return res.blob();
+export function dataURLToBlob(dataUrl) {
+  if (typeof dataUrl !== 'string' || !/^data:/i.test(dataUrl)) {
+    throw new Error('URL de données invalide : préfixe data: requis.');
+  }
+  const comma = dataUrl.indexOf(',');
+  if (comma === -1) {
+    throw new Error('URL de données malformée.');
+  }
+  const header = dataUrl.slice(5, comma);
+  const payload = dataUrl.slice(comma + 1);
+  const parts = header.split(';').filter(Boolean);
+  const isBase64 = parts.some((p) => p.toLowerCase() === 'base64');
+  const mime =
+    parts.find((p) => !p.includes('=') && p.toLowerCase() !== 'base64') || 'application/octet-stream';
+
+  if (isBase64) {
+    const binary = atob(payload.replace(/\s+/g, ''));
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return new Blob([bytes], { type: mime });
+  }
+  return new Blob([decodeURIComponent(payload)], { type: mime });
+}
+
+const isOptionalString = (v) => v === undefined || typeof v === 'string';
+const isOptionalNumber = (v) => v === undefined || v === null || Number.isFinite(v);
+
+/** Valide la structure minimale d'une entree de sauvegarde selon son magasin. */
+function isValidBackupRow(store, row) {
+  if (!row || typeof row !== 'object' || typeof row.id !== 'string' || !row.id) {
+    return false;
+  }
+  switch (store) {
+    case STORES.characters:
+      return (
+        isOptionalString(row.name) &&
+        Array.isArray(row.sections) &&
+        row.sections.every((s) => s && typeof s === 'object' && Array.isArray(s.fields))
+      );
+    case STORES.journal:
+      return (
+        typeof row.title === 'string' &&
+        typeof row.content === 'string' &&
+        (row.characterIds === undefined || Array.isArray(row.characterIds))
+      );
+    case STORES.documents:
+    case STORES.tracks:
+    case STORES.sounds:
+      return (
+        isOptionalString(row.name) &&
+        (row.blobOmitted === true ||
+          row.blob instanceof Blob ||
+          (Boolean(row.blobEncoded) && typeof row.blob === 'string'))
+      );
+    case STORES.playlists:
+      return (
+        isOptionalString(row.name) &&
+        Array.isArray(row.trackIds) &&
+        row.trackIds.every((id) => typeof id === 'string')
+      );
+    case STORES.rolls:
+      return (
+        typeof row.expression === 'string' &&
+        Number.isFinite(row.total) &&
+        Number.isFinite(row.at) &&
+        Array.isArray(row.terms)
+      );
+    case STORES.encounters:
+      return (
+        isOptionalString(row.name) &&
+        isOptionalNumber(row.round) &&
+        Array.isArray(row.combatants) &&
+        row.combatants.every(
+          (c) =>
+            c &&
+            typeof c === 'object' &&
+            typeof c.id === 'string' &&
+            Number.isFinite(c.initiative) &&
+            isOptionalNumber(c.initBonus) &&
+            isOptionalNumber(c.hp) &&
+            isOptionalNumber(c.hpMax)
+        )
+      );
+    default:
+      return true;
+  }
 }
 
 /**
@@ -173,16 +258,21 @@ export async function importBackup(dump, { merge = true } = {}) {
     if (!merge) await clearStore(store);
     const restored = [];
     for (const row of rows) {
-      // Ligne invalide (pas d'identifiant exploitable) : on l'ignore plutot
-      // que de casser tout le retablissement.
-      if (!row || typeof row.id !== 'string' || !row.id) {
+      // Ligne invalide (identifiant ou schema incoherent) : on l'ignore
+      // plutot que de casser tout le retablissement.
+      if (!isValidBackupRow(store, row)) {
         skipped += 1;
         continue;
       }
-      if (row.blobEncoded && typeof row.blob === 'string') {
-        restored.push({ ...row, blob: await dataURLToBlob(row.blob), blobEncoded: undefined });
-      } else if (row.blobOmitted) {
+      if (row.blobOmitted) {
         continue; // fichier absent de la sauvegarde : on ignore l'entree
+      }
+      if (row.blobEncoded && typeof row.blob === 'string') {
+        try {
+          restored.push({ ...row, blob: dataURLToBlob(row.blob), blobEncoded: undefined });
+        } catch {
+          skipped += 1;
+        }
       } else {
         restored.push(row);
       }

@@ -132,13 +132,21 @@ export function createCharacter(templateId = 'vierge', name = '') {
   };
 }
 
+function todayLocalISO() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export function createJournalEntry(overrides = {}) {
   const now = Date.now();
   return {
     id: uid('entry'),
     title: 'Nouvelle séance',
     chapter: '',
-    date: new Date().toISOString().slice(0, 10),
+    date: todayLocalISO(),
     content: '',
     characterIds: [],
     createdAt: now,

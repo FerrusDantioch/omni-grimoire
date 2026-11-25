@@ -24,7 +24,9 @@ if (typeof Promise.withResolvers !== 'function') {
   };
 }
 
-document.documentElement.dataset.theme = 'grimoire';
+if (!document.documentElement.dataset.theme) {
+  document.documentElement.dataset.theme = 'grimoire';
+}
 
 // Une nouvelle version telechargee ATTEND : la barre du haut propose
 // « Mettre a jour », et updateSW(true) l'active puis recharge la page.
@@ -37,7 +39,9 @@ const updateSW = registerSW({
     // A chaque retour dans l'application, on regarde s'il y a du nouveau.
     if (!registration) return;
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') registration.update().catch(() => {});
+      if (document.visibilityState === 'visible' && navigator.onLine) {
+        registration.update().catch(() => {});
+      }
     });
   },
   onOfflineReady() {

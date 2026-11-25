@@ -149,6 +149,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+.combatant__init:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .combatant__init input:focus-visible {
   outline: none;
 }
@@ -172,9 +177,13 @@
 .combatant__hpbar span {
   position: absolute;
   inset: 0 auto 0 0;
-  background: linear-gradient(90deg, var(--ok), color-mix(in srgb, var(--ok) 70%, white));
+  background: linear-gradient(90deg, #165933, #1b693d);
   border-radius: 999px;
   transition: width 0.2s ease;
+}
+
+[data-theme="parchemin"] .combatant__hpbar span {
+  background: linear-gradient(90deg, #8fd6ab, #a4e0bc);
 }
 
 .combatant__hpbar b {
@@ -188,7 +197,8 @@
 }
 
 .combatant__hp5 {
-  min-width: 40px;
+  min-width: var(--tap);
+  min-height: var(--tap);
   justify-content: center;
   font-variant-numeric: tabular-nums;
 }

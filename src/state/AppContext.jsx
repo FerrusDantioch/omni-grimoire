@@ -29,6 +29,9 @@ export function AppProvider({ children }) {
   const [encounters, setEncounters] = useState([]);
   const [sounds, setSounds] = useState([]);
   const [theme, setTheme] = useState('grimoire');
+  const [lastDarkTheme, setLastDarkTheme] = useState('grimoire');
+  const [vibration, setVibration] = useState(true);
+  const [reloadVersion, setReloadVersion] = useState(0);
   const [activeCharacterId, setActiveCharacterId] = useState(null);
   const [toasts, setToasts] = useState([]);
   const timers = useRef(new Map());
@@ -45,17 +48,20 @@ export function AppProvider({ children }) {
     let cancelled = false;
     (async () => {
       try {
-        const [chars, entries, docs, audio, lists, encs, snds, savedTheme, savedActive] = await Promise.all([
-          db.getAll(db.STORES.characters),
-          db.getAll(db.STORES.journal),
-          db.getAll(db.STORES.documents),
-          db.getAll(db.STORES.tracks),
-          db.getAll(db.STORES.playlists),
-          db.getAll(db.STORES.encounters),
-          db.getAll(db.STORES.sounds),
-          db.getSetting('theme', 'grimoire'),
-          db.getSetting('activeCharacterId', null),
-        ]);
+        const [chars, entries, docs, audio, lists, encs, snds, savedTheme, savedLastDark, savedVibration, savedActive] =
+          await Promise.all([
+            db.getAll(db.STORES.characters),
+            db.getAll(db.STORES.journal),
+            db.getAll(db.STORES.documents),
+            db.getAll(db.STORES.tracks),
+            db.getAll(db.STORES.playlists),
+            db.getAll(db.STORES.encounters),
+            db.getAll(db.STORES.sounds),
+            db.getSetting('theme', 'grimoire'),
+            db.getSetting('lastDarkTheme', null),
+            db.getSetting('vibration', true),
+            db.getSetting('activeCharacterId', null),
+          ]);
         if (cancelled) return;
         setCharacters(chars.sort(byUpdated));
         setJournal(entries.sort(byUpdated));
@@ -65,6 +71,19 @@ export function AppProvider({ children }) {
         setEncounters(encs.sort(byUpdated));
         setSounds(snds.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
         setTheme(savedTheme);
+        const darkFallback =
+          savedLastDark === 'grimoire' || savedLastDark === 'omni-systeme'
+            ? savedLastDark
+            : savedTheme === 'omni-systeme'
+              ? 'omni-systeme'
+              : 'grimoire';
+        setLastDarkTheme(darkFallback);
+        setVibration(savedVibration !== false);
+        try {
+          localStorage.setItem('omni-grimoire:theme', savedTheme);
+        } catch {
+          /* stockage local indisponible */
+        }
         if (savedActive && chars.some((c) => c.id === savedActive)) setActiveCharacterId(savedActive);
         db.requestPersistence();
       } catch (err) {
@@ -91,6 +110,21 @@ export function AppProvider({ children }) {
   const changeTheme = useCallback((next) => {
     setTheme(next);
     db.setSetting('theme', next);
+    try {
+      localStorage.setItem('omni-grimoire:theme', next);
+    } catch {
+      /* stockage local indisponible */
+    }
+    if (next === 'grimoire' || next === 'omni-systeme') {
+      setLastDarkTheme(next);
+      db.setSetting('lastDarkTheme', next);
+    }
+  }, []);
+
+  const changeVibration = useCallback((enabled) => {
+    const val = Boolean(enabled);
+    setVibration(val);
+    db.setSetting('vibration', val);
   }, []);
 
   /* ---------- notifications ---------- */
@@ -305,6 +339,7 @@ export function AppProvider({ children }) {
     setPlaylists(lists);
     setEncounters(encs.sort(byUpdated));
     setSounds(snds.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
+    setReloadVersion((v) => v + 1);
   }, []);
 
   const activeCharacter = useMemo(
@@ -328,7 +363,11 @@ export function AppProvider({ children }) {
       encounters,
       sounds,
       theme,
+      lastDarkTheme,
       changeTheme,
+      vibration,
+      changeVibration,
+      reloadVersion,
       toasts,
       toast,
       dismissToast,
@@ -357,7 +396,7 @@ export function AppProvider({ children }) {
     }),
     [
       ready, characters, journal, documents, tracks, playlists, encounters, sounds,
-      theme, changeTheme,
+      theme, lastDarkTheme, changeTheme, vibration, changeVibration, reloadVersion,
       toasts, toast, dismissToast, activeCharacter, activeCharacterId, activateCharacter,
       characterNames, saveCharacter, deleteCharacter, saveEntry, deleteEntry,
       addDocument, updateDocument, deleteDocument, addTracks, updateTrack, deleteTrack,

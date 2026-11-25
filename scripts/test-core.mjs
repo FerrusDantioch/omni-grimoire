@@ -1,15 +1,18 @@
+import fs from 'node:fs';
 import {
   parseExpression, rollExpression, formatBreakdown, formatRollForJournal, statToModifier, validateExpression,
 } from '../src/lib/dice.js';
-import { renderMarkdown, markdownToPlainText, wordCount } from '../src/lib/markdown.js';
+import * as markdown from '../src/lib/markdown.js';
+const { renderMarkdown, markdownToPlainText, wordCount } = markdown;
 
 // Fuseau a l'ouest de Greenwich, pose AVANT de charger utils.js (ses formats de
 // date figent le fuseau a leur creation) : le decalage d'un jour sur les dates
 // du journal ne se voit pas en UTC, fuseau des serveurs d'integration.
 process.env.TZ = 'Pacific/Tahiti';
 const { debounce, formatDate } = await import('../src/lib/utils.js');
-const { createCharacter } = await import('../src/lib/templates.js');
+const { createCharacter, createJournalEntry } = await import('../src/lib/templates.js');
 const { cloneCharacter, characterToFile, characterFromFile } = await import('../src/lib/characterFile.js');
+const db = await import('../src/lib/db.js');
 
 let fail = 0;
 const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) fail++; };
@@ -131,6 +134,92 @@ ok(/^11 /.test(formatDate('2026-10-11')), `date du journal au bon jour : ${forma
   const [weird, strength] = tricky.sections[0].fields;
   ok(tricky.name === 'Personnage importé', 'import : nom vide remplace');
   ok(weird.type === 'text' && strength.value === '' && strength.modMode === 'raw', 'import : type, valeur et mode inconnus neutralises');
+}
+
+// Correctifs v1.1.0 : statToModifier sur valeurs vides, URL avec __ en markdown,
+// date locale du journal, validation data-URL dans importBackup, regex PV.
+{
+  ok(statToModifier('', 'dnd') === null, 'statToModifier("", "dnd") -> null');
+  ok(statToModifier(null, 'dnd') === null, 'statToModifier(null, "dnd") -> null');
+  ok(statToModifier(undefined, 'dnd') === null, 'statToModifier(undefined, "dnd") -> null');
+  ok(statToModifier('   ', 'dnd') === null, 'statToModifier("   ", "dnd") -> null');
+  ok(statToModifier('', 'raw') === null, 'statToModifier("", "raw") -> null');
+  ok(statToModifier(null, 'raw') === null, 'statToModifier(null, "raw") -> null');
+  ok(statToModifier(0, 'dnd') === -5, 'statToModifier(0, "dnd") -> -5 (0 reste valide)');
+}
+
+{
+  const renderMd = markdown.markdownToHtml || renderMarkdown;
+  const linkHtml = renderMd('Voir [lien](https://exemple.fr/a__b__c) et **gras**');
+  ok(linkHtml.includes('href="https://exemple.fr/a__b__c"'), 'markdown : URL avec __ preservee intacte');
+  ok(linkHtml.includes('<strong>gras</strong>'), 'markdown : gras rendu apres un lien');
+  ok(renderMd('Un __mot__ souligne').includes('<strong>mot</strong>'), 'markdown : __gras__ fonctionne hors URL');
+}
+
+{
+  const formatLocalYmd = (d) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const before = formatLocalYmd(new Date());
+  const entry = createJournalEntry();
+  const after = formatLocalYmd(new Date());
+  ok(/^\d{4}-\d{2}-\d{2}$/.test(entry.date), `createJournalEntry : format YYYY-MM-DD (${entry.date})`);
+  ok(entry.date === before || entry.date === after, `createJournalEntry : date locale (${entry.date})`);
+  ok(createJournalEntry({ date: '2026-01-02' }).date === '2026-01-02', 'createJournalEntry : surcharge date conservee');
+}
+
+{
+  const origFetch = globalThis.fetch;
+  let externalFetchCalled = false;
+  globalThis.fetch = async (url, ...rest) => {
+    if (typeof url === 'string' && !url.startsWith('data:')) {
+      externalFetchCalled = true;
+      throw new Error(`Requete externe interdite dans dataURLToBlob/importBackup : ${url}`);
+    }
+    return origFetch(url, ...rest);
+  };
+  try {
+    if (typeof db.dataURLToBlob === 'function') {
+      let rejectedHttps = false;
+      try {
+        await db.dataURLToBlob('https://exemple.fr/test.png');
+      } catch {
+        rejectedHttps = true;
+      }
+      ok(rejectedHttps, 'dataURLToBlob rejette une URL https://');
+      const validBlob = await db.dataURLToBlob('data:text/plain;base64,SGVsbG8=');
+      ok(validBlob instanceof Blob && validBlob.size === 5, 'dataURLToBlob accepte une data-URL valide');
+    }
+
+    let rejectedImport = false;
+    let importRes = null;
+    try {
+      importRes = await db.importBackup({
+        format: 'grimoire-backup',
+        data: { documents: [{ id: 'doc1', blobEncoded: true, blob: 'https://exemple.fr/payload.pdf' }] },
+      });
+    } catch {
+      rejectedImport = true;
+    }
+    const skippedSafe = Boolean(importRes && importRes.skipped >= 1 && (importRes.counts?.documents ?? 0) === 0);
+    ok(!externalFetchCalled && (rejectedImport || skippedSafe), 'importBackup rejette une URL https:// sans fetch');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+}
+
+{
+  const combatSrc = fs.readFileSync(new URL('../src/views/CombatView.jsx', import.meta.url), 'utf8');
+  const hpLine = combatSrc.split('\n').find((l) => /\.test\(label\)/.test(l) && /\bhp\s*=/.test(l));
+  const match = hpLine && hpLine.match(/\/((?:[^/\\]|\\.)+)\/([a-z]*)\.test\(label\)/);
+  ok(Boolean(match), 'CombatView : regex PV localisee');
+  if (match) {
+    const hpRe = new RegExp(match[1], match[2]);
+    ok(!hpRe.test('survie'), 'CombatView : regex PV ne matche pas "survie"');
+    ok(hpRe.test('points de vie'), 'CombatView : regex PV matche "points de vie"');
+    ok(hpRe.test('pv'), 'CombatView : regex PV matche "pv"');
+    ok(hpRe.test('hp'), 'CombatView : regex PV matche "hp"');
+    ok(hpRe.test('vie'), 'CombatView : regex PV matche "vie"');
+  }
 }
 
 console.log(fail === 0 ? '\nTOUS LES TESTS PASSENT' : `\n${fail} ECHEC(S)`);

@@ -8,6 +8,8 @@ import './pdf.css';
 
 const ZOOM_MIN = 0.35;
 const ZOOM_MAX = 5;
+const FOCUSABLE =
+  'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
 // Au-dela d'environ 16 millions de pixels, Safari (iOS) et beaucoup de
 // navigateurs mobiles refusent de dessiner un canvas : la page resterait
 // blanche aux forts zooms. On baisse alors la finesse du rendu, pas sa taille.
@@ -29,9 +31,11 @@ function PdfViewer({ doc, onBack }) {
 
   const [pdf, setPdf] = useState(null);
   const [numPages, setNumPages] = useState(0);
-  const [page, setPage] = useState(doc.lastPage || 1);
-  const [pageInput, setPageInput] = useState(String(doc.lastPage || 1));
+  const initialPage = Math.max(1, Math.trunc(doc.lastPage) || 1);
+  const [page, setPage] = useState(initialPage);
+  const [pageInput, setPageInput] = useState(String(initialPage));
   const [scale, setScale] = useState(1);
+  const [fittedScale, setFittedScale] = useState(1);
   const [fitWidth, setFitWidth] = useState(true);
   const [status, setStatus] = useState('loading');
   const [errorMsg, setErrorMsg] = useState('');
@@ -39,12 +43,11 @@ function PdfViewer({ doc, onBack }) {
   /* La saisie reste libre pendant la frappe ; le bornage n'a lieu qu'a la
      validation, sinon impossible d'effacer le chiffre pour en taper un autre. */
   const commitPageInput = useCallback(() => {
-    setPageInput((raw) => {
-      const target = clamp(Number(raw) || 1, 1, numPages || 1);
-      setPage(target);
-      return String(target);
-    });
-  }, [numPages]);
+    const parsed = Math.trunc(Number(pageInput));
+    const target = Number.isFinite(parsed) && parsed > 0 ? clamp(parsed, 1, numPages || 1) : 1;
+    setPage(target);
+    setPageInput(String(target));
+  }, [pageInput, numPages]);
 
   useEffect(() => {
     setPageInput(String(page));
@@ -62,10 +65,11 @@ function PdfViewer({ doc, onBack }) {
   pageRef.current = page;
   const stageRef = useRef(null);
   // Echelle affichee, lisible sans attendre un rendu React (gestes rapides).
-  const scaleRef = useRef(scale);
-  scaleRef.current = scale;
+  const scaleRef = useRef(fitWidth ? fittedScale : scale);
+  scaleRef.current = fitWidth ? fittedScale : scale;
   // Point du document a garder sous le doigt (ou la souris) apres un zoom.
   const anchorRef = useRef(null);
+  const battlemapRestoreRef = useRef(null);
   const [viewportWidth, setViewportWidth] = useState(0);
 
   /**
@@ -106,7 +110,11 @@ function PdfViewer({ doc, onBack }) {
         const pdfjs = await loadPdfjs();
         const buffer = await doc.blob.arrayBuffer();
         if (cancelled) return;
-        const loadingTask = pdfjs.getDocument({ data: buffer });
+        const loadingTask = pdfjs.getDocument({
+          data: buffer,
+          isEvalSupported: false,
+          useSystemFonts: true,
+        });
         const document_ = await loadingTask.promise;
         if (cancelled) {
           document_.destroy();
@@ -156,18 +164,21 @@ function PdfViewer({ doc, onBack }) {
   }, []);
 
   /* ---------- rendu de la page ---------- */
+  const targetScale = fitWidth ? null : scale;
+
   useEffect(() => {
-    if (!pdf || !viewportWidth) return undefined;
+    if (!pdf || viewportWidth <= 24) return undefined;
     let cancelled = false;
 
     (async () => {
       try {
         renderTaskRef.current?.cancel();
-        const pdfPage = await pdf.getPage(page);
+        const safePage = clamp(Math.trunc(page) || 1, 1, pdf.numPages || 1);
+        const pdfPage = await pdf.getPage(safePage);
         if (cancelled) return;
 
         const base = pdfPage.getViewport({ scale: 1 });
-        const effective = fitWidth ? (viewportWidth - 24) / base.width : scale;
+        const effective = fitWidth ? Math.max(0.1, (viewportWidth - 24) / base.width) : targetScale;
         const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
         let renderScale = effective * dpr;
         const pixels = base.width * base.height * renderScale * renderScale;
@@ -195,7 +206,10 @@ function PdfViewer({ doc, onBack }) {
         const task = pdfPage.render({ canvasContext: canvas.getContext('2d', { alpha: false }), viewport });
         renderTaskRef.current = task;
         await task.promise;
-        if (!cancelled && fitWidth) setScale(effective);
+        if (!cancelled && fitWidth) {
+          scaleRef.current = effective;
+          setFittedScale(effective);
+        }
       } catch (err) {
         if (err?.name !== 'RenderingCancelledException') {
           console.error('[pdf] rendu impossible', err);
@@ -206,10 +220,11 @@ function PdfViewer({ doc, onBack }) {
     return () => {
       cancelled = true;
     };
-  }, [pdf, page, scale, fitWidth, viewportWidth]);
+  }, [pdf, page, targetScale, fitWidth, viewportWidth]);
 
   /* ---------- plein ecran ---------- */
   const enterBattlemap = useCallback(async () => {
+    battlemapRestoreRef.current = document.activeElement;
     setBattlemap(true);
     setFitWidth(true);
     try {
@@ -228,21 +243,64 @@ function PdfViewer({ doc, onBack }) {
         /* ignore */
       }
     }
+    if (battlemapRestoreRef.current?.isConnected) {
+      battlemapRestoreRef.current.focus();
+    }
   }, []);
 
   useEffect(() => {
     const onChange = () => {
-      if (!document.fullscreenElement) setBattlemap(false);
+      if (!document.fullscreenElement) {
+        setBattlemap(false);
+        if (battlemapRestoreRef.current?.isConnected) {
+          battlemapRestoreRef.current.focus();
+        }
+      }
     };
     document.addEventListener('fullscreenchange', onChange);
     return () => document.removeEventListener('fullscreenchange', onChange);
   }, []);
 
-  /* ---------- navigation clavier ---------- */
+  useEffect(() => {
+    if (!battlemap || !wrapRef.current) return undefined;
+    const timer = setTimeout(() => {
+      if (!wrapRef.current || wrapRef.current.contains(document.activeElement)) return;
+      wrapRef.current.querySelector(FOCUSABLE)?.focus();
+    }, 30);
+    return () => clearTimeout(timer);
+  }, [battlemap]);
+
+  /* ---------- navigation clavier et piege focus battlemap ---------- */
   useEffect(() => {
     const onKey = (e) => {
+      if (battlemap) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          exitBattlemap();
+          return;
+        }
+        if (e.key === 'Tab' && wrapRef.current) {
+          const items = Array.from(wrapRef.current.querySelectorAll(FOCUSABLE)).filter(
+            (el) => el.offsetParent !== null
+          );
+          if (items.length) {
+            const first = items[0];
+            const last = items[items.length - 1];
+            if (!wrapRef.current.contains(document.activeElement)) {
+              e.preventDefault();
+              first.focus();
+            } else if (e.shiftKey && document.activeElement === first) {
+              e.preventDefault();
+              last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+              e.preventDefault();
+              first.focus();
+            }
+          }
+          return;
+        }
+      }
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
-      if (e.key === 'Escape' && battlemap) exitBattlemap();
       // Document encore en chargement : aucune page ou aller.
       if (!numPages) return;
       if (e.key === 'ArrowRight' || e.key === 'PageDown') setPage((p) => clamp(p + 1, 1, numPages));
@@ -382,7 +440,13 @@ function PdfViewer({ doc, onBack }) {
   };
 
   return (
-    <div className={`pdf${battlemap ? ' pdf--battlemap' : ''}`} ref={wrapRef}>
+    <div
+      className={`pdf${battlemap ? ' pdf--battlemap' : ''}`}
+      ref={wrapRef}
+      role={battlemap ? 'dialog' : undefined}
+      aria-modal={battlemap ? true : undefined}
+      aria-label={battlemap ? `Battlemap — ${doc.name}` : undefined}
+    >
       <div className="pdf__bar">
         {battlemap ? (
           <button type="button" className="btn btn--sm btn--icon" onClick={exitBattlemap} aria-label="Quitter la battlemap">
@@ -437,7 +501,10 @@ function PdfViewer({ doc, onBack }) {
           <button
             type="button"
             className={`btn btn--sm${fitWidth ? ' btn--primary' : ''}`}
-            onClick={() => setFitWidth((f) => !f)}
+            onClick={() => {
+              if (fitWidth) setScale(Number(fittedScale.toFixed(2)));
+              setFitWidth((f) => !f);
+            }}
             title="Ajuster à la largeur"
           >
             {fitWidth ? 'Ajusté' : `${Math.round(scale * 100)}%`}
@@ -559,12 +626,12 @@ export default function PdfView({ openId, setOpenId }) {
     }
   };
 
-  if (open) return <PdfViewer doc={open} onBack={() => setOpenId(null)} />;
+  if (open) return <PdfViewer key={open.id} doc={open} onBack={() => setOpenId(null)} />;
 
   return (
     <>
       <div className="page-head">
-        <h2>Documents</h2>
+        <h1>Documents</h1>
         <span className="spacer" />
         <button type="button" className="btn btn--primary btn--sm" onClick={importPdf} disabled={importing}>
           <Icon name="upload" />
@@ -577,7 +644,7 @@ export default function PdfView({ openId, setOpenId }) {
           <span className="empty__icon">🗺️</span>
           <h3>Aucun document</h3>
           <p className="small">
-            Importez vos règles, scénarios ou cartes en PDF. Ils restent stockés sur l’appareil et
+            Importe tes règles, scénarios ou cartes en PDF. Ils restent stockés sur l’appareil et
             fonctionnent hors ligne.
           </p>
           <button type="button" className="btn btn--primary" onClick={importPdf} style={{ marginTop: 12 }}>

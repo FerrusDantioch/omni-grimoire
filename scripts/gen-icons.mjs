@@ -128,13 +128,13 @@ function downsample(c, factor, target) {
 const INK = [20, 16, 25, 1];
 const INK_SOFT = [32, 26, 44, 1];
 
-function drawIcon(target, { maskable = false, transparent = false } = {}) {
+function drawIcon(target, { maskable = false, opaque = false, transparent = false } = {}) {
   const SS = 3;
   const c = makeCanvas(target * SS);
   const S = c.size;
 
   if (!transparent) {
-    if (maskable) {
+    if (maskable || opaque) {
       fillAll(c, INK);
     } else {
       fillPoly(c, roundedRectPts(S, S * 0.22, 24), (x, y) => {
@@ -169,11 +169,11 @@ function drawIcon(target, { maskable = false, transparent = false } = {}) {
     const a = ((270 + 120 * i) * Math.PI) / 180;
     tri.push([cx + r2 * Math.cos(a), cy - r2 * Math.sin(a)]);
   }
-  fillPoly(c, tri, maskable ? INK : INK_SOFT);
+  const edge = maskable || opaque ? INK : INK_SOFT;
+  fillPoly(c, tri, edge);
 
   // aretes reliant le triangle aux sommets du haut
   const w = S * 0.022;
-  const edge = maskable ? INK : INK_SOFT;
   thickLine(c, tri[0], hex[3], w, edge);
   thickLine(c, tri[1], hex[5], w, edge);
   thickLine(c, tri[2], hex[1], w, edge);
@@ -184,8 +184,9 @@ function drawIcon(target, { maskable = false, transparent = false } = {}) {
 const jobs = [
   ['icon-192.png', 192, {}],
   ['icon-512.png', 512, {}],
+  ['icon-maskable-192.png', 192, { maskable: true }],
   ['icon-maskable-512.png', 512, { maskable: true }],
-  ['apple-touch-icon.png', 180, {}]
+  ['apple-touch-icon.png', 180, { opaque: true }]
 ];
 for (const [name, size, opts] of jobs) {
   fs.writeFileSync(path.join(OUT, name), drawIcon(size, opts));

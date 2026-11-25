@@ -14,7 +14,15 @@ import './characters.css';
 /** Ligne d'edition d'un champ : libelle, valeur et reglages replies. */
 function FieldRow({ field, onChange, onRemove, onMove, onRoll, isFirst, isLast }) {
   const [open, setOpen] = useState(false);
+  const [optionsText, setOptionsText] = useState(() => (field.options || []).join('\n'));
+  const editingOptionsRef = useRef(false);
   const modifier = field.type === 'number' && field.useAsModifier ? statToModifier(field.value, field.modMode) : null;
+
+  useEffect(() => {
+    if (!editingOptionsRef.current) {
+      setOptionsText((field.options || []).join('\n'));
+    }
+  }, [field.id, field.options]);
 
   return (
     <div className={`fieldrow${open ? ' fieldrow--open' : ''}`}>
@@ -64,7 +72,7 @@ function FieldRow({ field, onChange, onRemove, onMove, onRoll, isFirst, isLast }
             className="input fieldrow__value"
             type={field.type === 'number' ? 'number' : 'text'}
             value={field.value ?? ''}
-            onChange={(e) => onChange({ value: field.type === 'number' ? e.target.value : e.target.value })}
+            onChange={(e) => onChange({ value: e.target.value })}
             placeholder={field.type === 'number' ? '0' : '…'}
             aria-label={`Valeur de ${field.label}`}
             inputMode={field.type === 'number' ? 'numeric' : undefined}
@@ -166,10 +174,21 @@ function FieldRow({ field, onChange, onRemove, onMove, onRoll, isFirst, isLast }
               <textarea
                 className="textarea"
                 rows={3}
-                value={(field.options || []).join('\n')}
-                onChange={(e) =>
-                  onChange({ options: e.target.value.split('\n').map((o) => o.trim()).filter(Boolean) })
-                }
+                value={optionsText}
+                onFocus={() => {
+                  editingOptionsRef.current = true;
+                }}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  setOptionsText(raw);
+                  onChange({ options: raw.split('\n').map((o) => o.trim()).filter(Boolean) });
+                }}
+                onBlur={() => {
+                  editingOptionsRef.current = false;
+                  const cleaned = optionsText.split('\n').map((o) => o.trim()).filter(Boolean);
+                  setOptionsText(cleaned.join('\n'));
+                  onChange({ options: cleaned });
+                }}
                 placeholder={'Novice\nAguerri\nMaître'}
               />
             </label>
@@ -201,7 +220,6 @@ export default function CharacterEditor({ character, onBack, onOpen }) {
   const { roll, setPanelOpen } = useDice();
 
   const [draft, setDraft] = useState(character);
-  const [collapsed, setCollapsed] = useState({});
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [confirmSection, setConfirmSection] = useState(null);
@@ -417,19 +435,19 @@ export default function CharacterEditor({ character, onBack, onOpen }) {
           <Icon name="dice" size={16} />
           {modifierCount > 0
             ? `${modifierCount} caractéristique${modifierCount > 1 ? 's' : ''} disponible${modifierCount > 1 ? 's' : ''} comme modificateur — ouvrir les dés`
-            : 'Aucun modificateur : activez l’option sur un champ numérique'}
+            : 'Aucun modificateur : active l’option sur un champ numérique'}
         </button>
       </div>
 
       {draft.sections.map((section, sIndex) => {
-        const isCollapsed = collapsed[section.id];
+        const isCollapsed = Boolean(section.collapsed);
         return (
           <section key={section.id} className="sectioncard card">
             <header className="sectioncard__head">
               <button
                 type="button"
                 className="btn btn--ghost btn--icon btn--sm"
-                onClick={() => setCollapsed((c) => ({ ...c, [section.id]: !c[section.id] }))}
+                onClick={() => patchSection(section.id, { collapsed: !isCollapsed })}
                 aria-expanded={!isCollapsed}
                 aria-label={isCollapsed ? 'Déplier la catégorie' : 'Replier la catégorie'}
               >
@@ -515,7 +533,7 @@ export default function CharacterEditor({ character, onBack, onOpen }) {
         open={exportOpen}
         onClose={() => setExportOpen(false)}
         title={`Exporter « ${draft.name} »`}
-        subtitle="Choisissez le format du fichier à télécharger."
+        subtitle="Choisis le format du fichier à télécharger."
         formats={['pdf', 'txt', 'json']}
         onExport={handleExport}
         busy={exporting}

@@ -25,7 +25,7 @@ const TABS = [
 ];
 
 export default function App() {
-  const { ready, theme, changeTheme, activeCharacter } = useApp();
+  const { ready, theme, changeTheme, lastDarkTheme, activeCharacter } = useApp();
   const { roll, setPanelOpen } = useDice();
   const { current } = usePlayer();
   const { playingCount: ambiances, stopAll: stopAmbiances } = useAmbiance();
@@ -137,11 +137,11 @@ export default function App() {
         )}
 
         {/* Bascule rapide clair / sombre : les deux thèmes sombres (Grimoire et
-            Omni-système) passent au clair, le clair revient à Grimoire. */}
+            Omni-système) passent au clair ; le clair revient au dernier thème sombre utilisé. */}
         <button
           type="button"
           className="btn btn--ghost btn--icon"
-          onClick={() => changeTheme(theme === 'parchemin' ? 'grimoire' : 'parchemin')}
+          onClick={() => changeTheme(theme === 'parchemin' ? (lastDarkTheme || 'grimoire') : 'parchemin')}
           aria-label={theme === 'parchemin' ? 'Passer au thème sombre' : 'Passer au thème clair'}
         >
           <Icon name={theme === 'parchemin' ? 'moon' : 'sun'} />
@@ -152,7 +152,7 @@ export default function App() {
         <nav className="rail" aria-label="Sections de l’application">
           <span className="rail__label">Table de jeu</span>
           {TABS.map((t) => (
-            <button key={t.id} type="button" aria-current={tab === t.id} onClick={() => setTab(t.id)}>
+            <button key={t.id} type="button" aria-current={tab === t.id ? 'page' : undefined} onClick={() => setTab(t.id)}>
               <Icon name={t.icon} />
               {t.label}
             </button>
@@ -175,7 +175,7 @@ export default function App() {
 
       <nav className="tabbar" aria-label="Sections de l’application">
         {TABS.map((t) => (
-          <button key={t.id} type="button" aria-current={tab === t.id} onClick={() => setTab(t.id)}>
+          <button key={t.id} type="button" aria-current={tab === t.id ? 'page' : undefined} onClick={() => setTab(t.id)}>
             <Icon name={t.icon} />
             {t.label}
           </button>

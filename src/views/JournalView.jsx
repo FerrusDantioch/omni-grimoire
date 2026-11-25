@@ -3,7 +3,7 @@ import { useApp } from '../state/AppContext.jsx';
 import { useDice } from '../state/DiceContext.jsx';
 import { formatBreakdown, formatRollForJournal } from '../lib/dice.js';
 import { createJournalEntry } from '../lib/templates.js';
-import { renderMarkdown, wordCount } from '../lib/markdown.js';
+import { markdownToPlainText, renderMarkdown, wordCount } from '../lib/markdown.js';
 import { exportJournal } from '../lib/exporters.js';
 import { debounce, formatDate, formatRelative } from '../lib/utils.js';
 import Icon from '../components/Icon.jsx';
@@ -109,7 +109,19 @@ function JournalEditor({ entry, onBack }) {
     [persist]
   );
 
-  useEffect(() => () => persist.flush(draftRef.current), [persist]);
+  useEffect(() => {
+    const flushNow = () => persist.flush(draftRef.current);
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flushNow();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', flushNow);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', flushNow);
+      flushNow();
+    };
+  }, [persist]);
 
   const chapters = useMemo(
     () => [...new Set(journal.map((e) => e.chapter).filter(Boolean))],
@@ -117,6 +129,7 @@ function JournalEditor({ entry, onBack }) {
   );
 
   const html = useMemo(() => (preview ? renderMarkdown(draft.content) : ''), [preview, draft.content]);
+  const words = useMemo(() => wordCount(draft.content), [draft.content]);
 
   const handleExport = async (format) => {
     setExporting(true);
@@ -270,21 +283,21 @@ function JournalEditor({ entry, onBack }) {
             className="textarea journal-textarea"
             value={draft.content}
             onChange={(e) => update({ content: e.target.value })}
-            placeholder={'Ce qui s’est passé cette séance…\n\n## Rencontres\n- Le passeur du gué\n\n> « Vous ne passerez pas sans péage. »'}
+            placeholder={'Ce qui s’est passé cette séance…\n\n## Rencontres\n- Le passeur du gué\n\n> « Tu ne passeras pas sans péage. »'}
             aria-label="Contenu de la séance"
           />
         </div>
       )}
 
       <p className="small muted" style={{ textAlign: 'right', margin: 0 }}>
-        {wordCount(draft.content)} mots
+        {words} mots
       </p>
 
       <ExportModal
         open={exportOpen}
         onClose={() => setExportOpen(false)}
         title="Exporter le journal"
-        subtitle="Choisissez le format et l’étendue de l’export."
+        subtitle="Choisis le format et l’étendue de l’export."
         onExport={handleExport}
         busy={exporting}
         extra={
@@ -315,7 +328,7 @@ function JournalEditor({ entry, onBack }) {
       <Modal open={rollPickerOpen} onClose={() => setRollPickerOpen(false)} title="Insérer un jet de dés">
         {history.length === 0 ? (
           <p className="small muted" style={{ margin: 0 }}>
-            Aucun jet pour l’instant. Lancez les dés avec le bouton en bas à droite, puis revenez ici.
+            Aucun jet pour l’instant. Lance les dés avec le bouton en bas à droite, puis reviens ici.
           </p>
         ) : (
           <div className="stack">
@@ -360,6 +373,18 @@ export default function JournalView({ openId, setOpenId }) {
 
   const open = journal.find((e) => e.id === openId) || null;
 
+  const summaries = useMemo(() => {
+    const map = new Map();
+    for (const entry of journal) {
+      const plain = markdownToPlainText(entry.content).replace(/\s+/g, ' ').trim();
+      map.set(entry.id, {
+        excerpt: plain.slice(0, 160) || 'Vide',
+        words: wordCount(entry.content),
+      });
+    }
+    return map;
+  }, [journal]);
+
   const grouped = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = q
@@ -400,12 +425,12 @@ export default function JournalView({ openId, setOpenId }) {
     }
   };
 
-  if (open) return <JournalEditor entry={open} onBack={() => setOpenId(null)} />;
+  if (open) return <JournalEditor key={open.id} entry={open} onBack={() => setOpenId(null)} />;
 
   return (
     <>
       <div className="page-head">
-        <h2>Journal</h2>
+        <h1>Journal</h1>
         <span className="spacer" />
         {journal.length > 0 && (
           <button type="button" className="btn btn--sm" onClick={() => setExportAllOpen(true)}>
@@ -439,7 +464,7 @@ export default function JournalView({ openId, setOpenId }) {
           <p className="small">
             {journal.length
               ? 'Aucune séance ne correspond à cette recherche.'
-              : 'Consignez vos séances, regroupées par chapitre.'}
+              : 'Consigne tes séances, regroupées par chapitre.'}
           </p>
           {!journal.length && (
             <button type="button" className="btn btn--primary" onClick={create} style={{ marginTop: 12 }}>
@@ -463,12 +488,12 @@ export default function JournalView({ openId, setOpenId }) {
                     <span className="small muted">{entry.date ? formatDate(entry.date) : ''}</span>
                   </span>
                   <span className="journal-item__excerpt small muted">
-                    {entry.content.slice(0, 160).replace(/[#*>`_-]/g, '') || 'Vide'}
+                    {summaries.get(entry.id)?.excerpt || 'Vide'}
                   </span>
                   <span className="journal-item__foot small muted">
                     {(entry.characterIds || []).map((id) => characterNames[id]).filter(Boolean).join(', ')}
                     {entry.characterIds?.length ? ' · ' : ''}
-                    {wordCount(entry.content)} mots
+                    {summaries.get(entry.id)?.words ?? 0} mots
                   </span>
                 </button>
               ))}

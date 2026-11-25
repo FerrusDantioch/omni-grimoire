@@ -40,7 +40,7 @@
   --line-soft: #2c2439;
   --txt: #f0eaf6;
   --txt-2: #b9aecb;
-  --txt-3: #8a7ea0;
+  --txt-3: #9b8fb2;
   --accent: var(--gold);
   --accent-ink: #2a1f0c;
   --shadow: 0 10px 34px rgba(0, 0, 0, .55);
@@ -56,9 +56,12 @@
   --line: #d3c1a2;
   --line-soft: #e2d4ba;
   --txt: #2c2418;
-  --txt-2: #6a5a44;
-  --txt-3: #8d7c63;
-  --accent: #9a6b1f;
+  --txt-2: #574835;
+  --txt-3: #6d5c45;
+  --accent: #7a5111;
+  --gold-soft: #855914;
+  --danger: #a82922;
+  --ok: #19693c;
   --accent-ink: #fff8e8;
   --shadow: 0 10px 30px rgba(90, 66, 30, .18);
   --shadow-sm: 0 2px 8px rgba(90, 66, 30, .12);
@@ -242,9 +245,9 @@ a { color: var(--accent); }
 }
 
 .tabbar button svg { width: 22px; height: 22px; }
-.tabbar button[aria-current="true"] { color: var(--accent); }
+.tabbar button[aria-current="page"] { color: var(--accent); }
 
-.tabbar button[aria-current="true"]::before {
+.tabbar button[aria-current="page"]::before {
   content: "";
   position: absolute;
   top: 0;
@@ -317,8 +320,8 @@ a { color: var(--accent); }
 }
 
 .btn--sm {
-  min-height: 34px;
-  padding: 0 11px;
+  min-height: var(--tap);
+  padding: 0 12px;
   font-size: 13px;
   border-radius: var(--r-sm);
 }
@@ -332,7 +335,11 @@ a { color: var(--accent); }
   border-radius: var(--r-md);
 }
 
-.btn--icon.btn--sm { width: 34px; }
+.btn--icon.btn--sm {
+  width: var(--tap);
+  min-width: var(--tap);
+  min-height: var(--tap);
+}
 .btn--block { width: 100%; }
 
 .input,
@@ -404,6 +411,7 @@ a { color: var(--accent); }
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-height: var(--tap);
   padding: 6px 11px;
   border-radius: 999px;
   border: 1px solid var(--line);
@@ -453,6 +461,7 @@ a { color: var(--accent); }
   flex-wrap: wrap;
 }
 
+.page-head h1,
 .page-head h2 {
   font-family: var(--serif);
   font-size: 22px;
@@ -660,7 +669,7 @@ a { color: var(--accent); }
     color: var(--txt);
   }
 
-  .rail button[aria-current="true"] {
+  .rail button[aria-current="page"] {
     background: color-mix(in srgb, var(--accent) 15%, transparent);
     color: var(--accent);
   }
